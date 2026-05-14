@@ -67,6 +67,15 @@ const CENTER_TOP_MARGIN = 10;
 /** 原操作提示行高度，现作为棋盘挂载区底边距，避免贴底控件与棋盘重叠 */
 const BOARD_AREA_BOTTOM_PAD = 10;
 
+/** 棋盘右侧关卡 HUD 左缘与棋盘右缘的间距（像素） */
+const HUD_LEVEL_GAP_FROM_BOARD = 20;
+
+/** 左右侧栏（音乐/音效、开始等）相对顶部的额外上边距 */
+const SIDE_RAIL_EXTRA_TOP = 40;
+
+/** 触摸区「攻击」相对竖直排列轴线向左平移（跳跃不变） */
+const ATK_TOUCH_BTN_SHIFT_LEFT = 100;
+
 /** 摇杆、触摸操作区与屏幕角（再与安全区叠加） */
 const UI_EDGE_PAD = 18;
 /** 弹窗等与屏幕左右的留白（与侧栏独立） */
@@ -452,7 +461,7 @@ export class GameController extends Component {
     const lrWg = leftRail.addComponent(Widget);
     lrWg.isAlignLeft = lrWg.isAlignTop = lrWg.isAlignBottom = true;
     lrWg.left = 0;
-    lrWg.top = CENTER_TOP_MARGIN;
+    lrWg.top = CENTER_TOP_MARGIN + SIDE_RAIL_EXTRA_TOP;
     lrWg.bottom = 0;
     this.leftRailWidget = lrWg;
     const lrLay = leftRail.addComponent(Layout);
@@ -488,7 +497,7 @@ export class GameController extends Component {
     const rrWg = rightRail.addComponent(Widget);
     rrWg.isAlignRight = rrWg.isAlignTop = rrWg.isAlignBottom = true;
     rrWg.right = 0;
-    rrWg.top = CENTER_TOP_MARGIN;
+    rrWg.top = CENTER_TOP_MARGIN + SIDE_RAIL_EXTRA_TOP;
     rrWg.bottom = 0;
     this.rightRailWidget = rrWg;
     const rrLay = rightRail.addComponent(Layout);
@@ -553,6 +562,49 @@ export class GameController extends Component {
     bmWg.bottom = BOARD_AREA_BOTTOM_PAD;
     centerCol.addChild(this.boardMount);
 
+    const hudStripW = this.hudStripWidthFor(ccUt.width);
+    const hudStripH = 160;
+    this.hudTimeStrip = new Node('HudTime');
+    const htUt = this.hudTimeStrip.addComponent(UITransform);
+    htUt.setAnchorPoint(0, 1);
+    htUt.setContentSize(hudStripW, hudStripH);
+    const htWg = this.hudTimeStrip.addComponent(Widget);
+    htWg.isAlignLeft = true;
+    htWg.isAlignTop = true;
+    htWg.isAlignVerticalCenter = false;
+    htWg.left = 8;
+    htWg.top = 0;
+    this.countdownStripLabel = this.hudTimeStrip.addComponent(Label);
+    this.countdownStripLabel.string = '';
+    this.countdownStripLabel.fontSize = 20;
+    this.countdownStripLabel.lineHeight = 24;
+    this.countdownStripLabel.color = UiTheme.honey;
+    this.countdownStripLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    this.countdownStripLabel.verticalAlign = Label.VerticalAlign.TOP;
+    this.countdownStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
+    this.boardMount.addChild(this.hudTimeStrip);
+
+    this.hudLevelStrip = new Node('HudLevel');
+    const hlUt = this.hudLevelStrip.addComponent(UITransform);
+    hlUt.setAnchorPoint(0, 1);
+    hlUt.setContentSize(hudStripW, hudStripH);
+    const hlWg = this.hudLevelStrip.addComponent(Widget);
+    hlWg.isAlignLeft = true;
+    hlWg.isAlignRight = false;
+    hlWg.isAlignTop = true;
+    hlWg.isAlignVerticalCenter = false;
+    hlWg.left = 0;
+    hlWg.top = 0;
+    this.levelStripLabel = this.hudLevelStrip.addComponent(Label);
+    this.levelStripLabel.string = '';
+    this.levelStripLabel.fontSize = 18;
+    this.levelStripLabel.lineHeight = 22;
+    this.levelStripLabel.color = UiTheme.cream;
+    this.levelStripLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    this.levelStripLabel.verticalAlign = Label.VerticalAlign.TOP;
+    this.levelStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
+    this.boardMount.addChild(this.hudLevelStrip);
+
     this.boardRoot = new Node('BoardRoot');
     const brUt = this.boardRoot.addComponent(UITransform);
     brUt.setAnchorPoint(0.5, 0.5);
@@ -578,44 +630,6 @@ export class GameController extends Component {
       edge: this.mapTileScaleEdge,
       stone: this.mapTileScaleStone,
     });
-
-    const hudStripW = this.hudStripWidthFor(ccUt.width);
-    const hudStripH = 160;
-    this.hudTimeStrip = new Node('HudTime');
-    const htUt = this.hudTimeStrip.addComponent(UITransform);
-    htUt.setAnchorPoint(0, 0.5);
-    htUt.setContentSize(hudStripW, hudStripH);
-    const htWg = this.hudTimeStrip.addComponent(Widget);
-    htWg.isAlignLeft = true;
-    htWg.isAlignVerticalCenter = true;
-    htWg.left = 8;
-    this.countdownStripLabel = this.hudTimeStrip.addComponent(Label);
-    this.countdownStripLabel.string = '';
-    this.countdownStripLabel.fontSize = 20;
-    this.countdownStripLabel.lineHeight = 24;
-    this.countdownStripLabel.color = UiTheme.honey;
-    this.countdownStripLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
-    this.countdownStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
-    this.countdownStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
-    this.boardMount.addChild(this.hudTimeStrip);
-
-    this.hudLevelStrip = new Node('HudLevel');
-    const hlUt = this.hudLevelStrip.addComponent(UITransform);
-    hlUt.setAnchorPoint(1, 0.5);
-    hlUt.setContentSize(hudStripW, hudStripH);
-    const hlWg = this.hudLevelStrip.addComponent(Widget);
-    hlWg.isAlignRight = true;
-    hlWg.isAlignVerticalCenter = true;
-    hlWg.right = 8;
-    this.levelStripLabel = this.hudLevelStrip.addComponent(Label);
-    this.levelStripLabel.string = '';
-    this.levelStripLabel.fontSize = 18;
-    this.levelStripLabel.lineHeight = 22;
-    this.levelStripLabel.color = UiTheme.cream;
-    this.levelStripLabel.horizontalAlign = Label.HorizontalAlign.RIGHT;
-    this.levelStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
-    this.levelStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
-    this.boardMount.addChild(this.hudLevelStrip);
 
     centerCol.removeFromParent();
     leftRail.removeFromParent();
@@ -712,7 +726,12 @@ export class GameController extends Component {
       cornerRadius: circleR,
       fontSize: actionFont,
     });
-    actions.addChild(this.wrapBtn(atk, () => this.onAttack()));
+    const atkWrap = new Node('AtkWrap');
+    atkWrap.addComponent(UITransform).setContentSize(acWpx, circleD);
+    const atkBtn = this.wrapBtn(atk, () => this.onAttack());
+    atkBtn.setPosition(-ATK_TOUCH_BTN_SHIFT_LEFT, 0, 0);
+    atkWrap.addChild(atkBtn);
+    actions.addChild(atkWrap);
   }
 
   private buildScreenBackground(gameRoot: Node): void {
@@ -740,10 +759,10 @@ export class GameController extends Component {
   private applySafeAreaInsets(): void {
     const sa = getSafeAreaInsets();
     this.leftRailWidget.left = sa.left;
-    this.leftRailWidget.top = sa.top + CENTER_TOP_MARGIN;
+    this.leftRailWidget.top = sa.top + CENTER_TOP_MARGIN + SIDE_RAIL_EXTRA_TOP;
     this.leftRailWidget.bottom = sa.bottom;
     this.rightRailWidget.right = sa.right;
-    this.rightRailWidget.top = sa.top + CENTER_TOP_MARGIN;
+    this.rightRailWidget.top = sa.top + CENTER_TOP_MARGIN + SIDE_RAIL_EXTRA_TOP;
     this.rightRailWidget.bottom = sa.bottom;
     this.centerColumnWidget.left = SIDE_RAIL_W + sa.left;
     this.centerColumnWidget.right = SIDE_RAIL_W + sa.right;
@@ -981,12 +1000,15 @@ export class GameController extends Component {
     paintModalPanelBorder(pbdG, pw, ph, MODAL_PANEL_CORNER_RADIUS);
     panel.addChild(panelBorderNode);
 
+    const levelsTitleTop = 18;
+    const levelsTitleBlockH = 56;
+    const levelsTitleListGap = 10;
     const levelsTitle = this.addCenterLabel(
       panel,
       'LevelsTitle',
       24,
       UiTheme.cream,
-      18,
+      levelsTitleTop,
     );
     levelsTitle.string = '全部关卡';
 
@@ -1013,7 +1035,7 @@ export class GameController extends Component {
     const gw = grid.addComponent(Widget);
     gw.isAlignTop = true;
     gw.isAlignHorizontalCenter = true;
-    gw.top = 58;
+    gw.top = levelsTitleTop + levelsTitleBlockH + levelsTitleListGap;
     panel.addChild(grid);
 
     const lvPickFill = new Color(
@@ -1291,6 +1313,33 @@ export class GameController extends Component {
       this.sim.grid.height,
       BASE_TILE_PX,
     );
+    this.layoutHudStrips();
+  }
+
+  /** 棋盘左右 HUD 条带宽度，避免与中间缩放后的棋盘重叠过多 */
+  private hudStripWidthFor(boardMountWidth: number): number {
+    return Math.max(120, Math.min(260, Math.floor(boardMountWidth * 0.32)));
+  }
+
+  private layoutHudStrips(): void {
+    const bmut = this.boardMount.getComponent(UITransform);
+    if (!bmut) return;
+    const w = this.hudStripWidthFor(bmut.width);
+    const h = 160;
+    this.hudTimeStrip.getComponent(UITransform)!.setContentSize(w, h);
+    this.hudLevelStrip.getComponent(UITransform)!.setContentSize(w, h);
+
+    const gw = this.sim.grid.width * BASE_TILE_PX;
+    const gh = this.sim.grid.height * BASE_TILE_PX;
+    const s = this.boardRoot.scale.x;
+    const halfMount = bmut.height * 0.5;
+    const halfBoard = gh * s * 0.5;
+    const topPad = Math.max(0, halfMount - halfBoard);
+    const htWg = this.hudTimeStrip.getComponent(Widget)!;
+    const hlWg = this.hudLevelStrip.getComponent(Widget)!;
+    htWg.top = topPad;
+    hlWg.top = topPad;
+    hlWg.left = bmut.width * 0.5 + gw * s * 0.5 + HUD_LEVEL_GAP_FROM_BOARD;
   }
 
   private onKeyDown(e: EventKeyboard): void {
@@ -1599,8 +1648,9 @@ export class GameController extends Component {
     const end = this.sim.gameEnd !== 'none' ? ' — 已结束' : '';
     const bestSess = gameSession.bests[String(this.sim.level)];
     const bestVal = Math.max(bestSess ?? 0, this.hudDiskBestForLevel);
-    const bestStr = bestVal > 0 ? ` · 本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
-    const levelLine = `第 ${this.sim.level} 关${bestStr}`;
+    const levelLine1 = `第 ${this.sim.level} 关`;
+    const levelLine2 = bestVal > 0 ? `本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
+    const levelLine = levelLine2 ? `${levelLine1}\n${levelLine2}` : levelLine1;
     const timeLine = `剩余 ${Math.max(0, this.sim.timeLeft).toFixed(1)}s${st}${end}`;
     if (levelLine !== this.lastLevelHudLine) {
       this.lastLevelHudLine = levelLine;
