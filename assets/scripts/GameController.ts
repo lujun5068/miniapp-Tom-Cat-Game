@@ -1,7 +1,7 @@
 /**
  * 使用方式：在 Creator 中打开/新建场景 → 选中 Canvas 节点 → 添加组件「GameController」→ 保存场景 → 运行预览。
- * 音频：在 Inspector 中为 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。顶栏音乐/音效开关写入 `sys.localStorage`（`cat-game-audio-v1`）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用官方推荐格式后重新绑定。
- * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` / `sfMouse` 为单帧占位；`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
+ * 音频：在 Inspector 中为 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。顶栏音乐/音效开关与关卡存档经 `storage/platformKv` 写入：微信小游戏构建下走 **`wx.setStorageSync`**，其余平台走 **`sys.localStorage`**（键名与网页版一致）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用 **mp3** 等再绑定。
+ * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` / `sfMouse` 为单帧占位；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
  */
 import {
   _decorator,
@@ -42,6 +42,7 @@ import { CatMotionAnimator } from './visual/CatMotionAnimator';
 import {
   MODAL_END_PANEL_HEIGHT,
   MODAL_LEVELS_PANEL_HEIGHT,
+  MODAL_LEVELS_PANEL_WIDTH,
   MODAL_PANEL_CORNER_RADIUS,
   MODAL_PANEL_WIDTH,
   UiTheme,
@@ -50,17 +51,21 @@ import { getSafeAreaInsets } from './ui/safeArea';
 
 const { ccclass, property } = _decorator;
 
-const JOY_RETURN_DEAD_PX = 16;
-const JOY_DELTA_THRESH_PX = 5.7;
+const JOY_SCALE = 1.5;
+const JOY_PANEL_SIZE = Math.round(140 * JOY_SCALE);
+const JOY_KNOB_SIZE = Math.round(56 * JOY_SCALE);
+const JOY_RETURN_DEAD_PX = Math.round(16 * JOY_SCALE);
+const JOY_DELTA_THRESH_PX = 5.7 * JOY_SCALE;
+
+/** 跳跃 / 攻击圆形按钮相对原 72px 的缩放 */
+const ACTION_BTN_SCALE = 2;
 
 /** 左右侧栏宽度（音乐/音效 | 开始/下一关等） */
 const SIDE_RAIL_W = 128;
-/**
- * 中间列顶部固定区高度：关卡行 + 倒计时行（其下为棋盘区）
- */
-const CENTER_TOP_FIXED_H = 72;
+/** 中间列顶部边距（其下为棋盘区；原顶部双行 HUD 已移至棋盘左右） */
+const CENTER_TOP_MARGIN = 10;
 /** 原操作提示行高度，现作为棋盘挂载区底边距，避免贴底控件与棋盘重叠 */
-const BOARD_AREA_BOTTOM_PAD = 36;
+const BOARD_AREA_BOTTOM_PAD = 10;
 
 /** 摇杆、触摸操作区与屏幕角（再与安全区叠加） */
 const UI_EDGE_PAD = 18;
@@ -282,6 +287,17 @@ export class GameController extends Component {
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;
 
+  @property({
+    type: SpriteFrame,
+    tooltip: '老鼠纵向移动贴图（可空则与 sfMouse 共用，仍按位移做 Y 翻转）',
+  })
+  sfMouseVertical: SpriteFrame | null = null;
+
+  @property({
+    tooltip: '老鼠精灵显示相对默认尺寸的缩放（如 1.5 即放大 1.5 倍）',
+  })
+  mouseSpriteScale = 1.5;
+
   @property({ type: SpriteFrame, tooltip: '全屏 UI 底图（可空则用主题色块）' })
   sfUiBg: SpriteFrame | null = null;
 
@@ -308,6 +324,8 @@ export class GameController extends Component {
 
   private levelStripLabel!: Label;
   private countdownStripLabel!: Label;
+  private hudTimeStrip!: Node;
+  private hudLevelStrip!: Node;
   private runBtn!: Button;
   private runBtnLabel!: Label;
   private nextBtn!: Button;
@@ -434,7 +452,7 @@ export class GameController extends Component {
     const lrWg = leftRail.addComponent(Widget);
     lrWg.isAlignLeft = lrWg.isAlignTop = lrWg.isAlignBottom = true;
     lrWg.left = 0;
-    lrWg.top = CENTER_TOP_FIXED_H;
+    lrWg.top = CENTER_TOP_MARGIN;
     lrWg.bottom = 0;
     this.leftRailWidget = lrWg;
     const lrLay = leftRail.addComponent(Layout);
@@ -470,7 +488,7 @@ export class GameController extends Component {
     const rrWg = rightRail.addComponent(Widget);
     rrWg.isAlignRight = rrWg.isAlignTop = rrWg.isAlignBottom = true;
     rrWg.right = 0;
-    rrWg.top = CENTER_TOP_FIXED_H;
+    rrWg.top = CENTER_TOP_MARGIN;
     rrWg.bottom = 0;
     this.rightRailWidget = rrWg;
     const rrLay = rightRail.addComponent(Layout);
@@ -518,50 +536,11 @@ export class GameController extends Component {
     this.centerColumnWidget = ccWg;
     gameRoot.addChild(centerCol);
 
-    const infoStrip = new Node('InfoStrip');
-    const isUt = infoStrip.addComponent(UITransform);
-    isUt.setContentSize(ccUt.width, CENTER_TOP_FIXED_H);
-    const isWg = infoStrip.addComponent(Widget);
-    isWg.isAlignTop = isWg.isAlignLeft = isWg.isAlignRight = true;
-    isWg.top = 0;
-    isWg.left = isWg.right = 0;
-    const isLay = infoStrip.addComponent(Layout);
-    isLay.type = Layout.Type.VERTICAL;
-    isLay.spacingY = 4;
-    isLay.paddingTop = 8;
-    isLay.paddingLeft = isLay.paddingRight = 8;
-    isLay.resizeMode = Layout.ResizeMode.CONTAINER;
-    centerCol.addChild(infoStrip);
-
-    const levelNd = new Node('LevelLine');
-    levelNd.addComponent(UITransform).setContentSize(isUt.width - 16, 28);
-    this.levelStripLabel = levelNd.addComponent(Label);
-    this.levelStripLabel.string = '';
-    this.levelStripLabel.fontSize = 18;
-    this.levelStripLabel.lineHeight = 22;
-    this.levelStripLabel.color = UiTheme.cream;
-    this.levelStripLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
-    this.levelStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
-    this.levelStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
-    infoStrip.addChild(levelNd);
-
-    const timeNd = new Node('CountdownLine');
-    timeNd.addComponent(UITransform).setContentSize(isUt.width - 16, 30);
-    this.countdownStripLabel = timeNd.addComponent(Label);
-    this.countdownStripLabel.string = '';
-    this.countdownStripLabel.fontSize = 22;
-    this.countdownStripLabel.lineHeight = 26;
-    this.countdownStripLabel.color = UiTheme.honey;
-    this.countdownStripLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
-    this.countdownStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
-    this.countdownStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
-    infoStrip.addChild(timeNd);
-
     this.boardMount = new Node('BoardMount');
     const bmUt = this.boardMount.addComponent(UITransform);
     bmUt.setContentSize(
       ccUt.width,
-      Math.max(1, ccUt.height - CENTER_TOP_FIXED_H - BOARD_AREA_BOTTOM_PAD),
+      Math.max(1, ccUt.height - CENTER_TOP_MARGIN - BOARD_AREA_BOTTOM_PAD),
     );
     const bmWg = this.boardMount.addComponent(Widget);
     bmWg.isAlignTop =
@@ -569,7 +548,7 @@ export class GameController extends Component {
       bmWg.isAlignLeft =
       bmWg.isAlignRight =
         true;
-    bmWg.top = CENTER_TOP_FIXED_H;
+    bmWg.top = CENTER_TOP_MARGIN;
     bmWg.left = bmWg.right = 0;
     bmWg.bottom = BOARD_AREA_BOTTOM_PAD;
     centerCol.addChild(this.boardMount);
@@ -590,11 +569,53 @@ export class GameController extends Component {
       this.sfCat,
       this.sfMouse,
     );
+    this.boardView.setMouseVisualOptions({
+      verticalFrame: this.sfMouseVertical,
+      displayScale: this.mouseSpriteScale,
+    });
     this.boardView.configureMapTileScales({
       floor: this.mapTileScaleFloor,
       edge: this.mapTileScaleEdge,
       stone: this.mapTileScaleStone,
     });
+
+    const hudStripW = this.hudStripWidthFor(ccUt.width);
+    const hudStripH = 160;
+    this.hudTimeStrip = new Node('HudTime');
+    const htUt = this.hudTimeStrip.addComponent(UITransform);
+    htUt.setAnchorPoint(0, 0.5);
+    htUt.setContentSize(hudStripW, hudStripH);
+    const htWg = this.hudTimeStrip.addComponent(Widget);
+    htWg.isAlignLeft = true;
+    htWg.isAlignVerticalCenter = true;
+    htWg.left = 8;
+    this.countdownStripLabel = this.hudTimeStrip.addComponent(Label);
+    this.countdownStripLabel.string = '';
+    this.countdownStripLabel.fontSize = 20;
+    this.countdownStripLabel.lineHeight = 24;
+    this.countdownStripLabel.color = UiTheme.honey;
+    this.countdownStripLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    this.countdownStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
+    this.countdownStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
+    this.boardMount.addChild(this.hudTimeStrip);
+
+    this.hudLevelStrip = new Node('HudLevel');
+    const hlUt = this.hudLevelStrip.addComponent(UITransform);
+    hlUt.setAnchorPoint(1, 0.5);
+    hlUt.setContentSize(hudStripW, hudStripH);
+    const hlWg = this.hudLevelStrip.addComponent(Widget);
+    hlWg.isAlignRight = true;
+    hlWg.isAlignVerticalCenter = true;
+    hlWg.right = 8;
+    this.levelStripLabel = this.hudLevelStrip.addComponent(Label);
+    this.levelStripLabel.string = '';
+    this.levelStripLabel.fontSize = 18;
+    this.levelStripLabel.lineHeight = 22;
+    this.levelStripLabel.color = UiTheme.cream;
+    this.levelStripLabel.horizontalAlign = Label.HorizontalAlign.RIGHT;
+    this.levelStripLabel.verticalAlign = Label.VerticalAlign.CENTER;
+    this.levelStripLabel.overflow = Label.Overflow.RESIZE_HEIGHT;
+    this.boardMount.addChild(this.hudLevelStrip);
 
     centerCol.removeFromParent();
     leftRail.removeFromParent();
@@ -635,18 +656,18 @@ export class GameController extends Component {
 
     this.joyPanel = new Node('Joystick');
     const jpUt = this.joyPanel.addComponent(UITransform);
-    jpUt.setContentSize(140, 140);
+    jpUt.setContentSize(JOY_PANEL_SIZE, JOY_PANEL_SIZE);
     const jpW = this.joyPanel.addComponent(Widget);
     jpW.isAlignLeft = true;
     jpW.isAlignBottom = true;
     jpW.left = UI_EDGE_PAD;
-    jpW.bottom = 100;
+    jpW.bottom = BOARD_AREA_BOTTOM_PAD;
     this.joyWidget = jpW;
     touchRoot.addChild(this.joyPanel);
 
     this.joyKnob = new Node('Knob');
     const knUt = this.joyKnob.addComponent(UITransform);
-    knUt.setContentSize(56, 56);
+    knUt.setContentSize(JOY_KNOB_SIZE, JOY_KNOB_SIZE);
     this.joyPanel.addChild(this.joyKnob);
 
     this.joyPanel.on(Node.EventType.TOUCH_START, this.onJoyStart, this);
@@ -654,18 +675,22 @@ export class GameController extends Component {
     this.joyPanel.on(Node.EventType.TOUCH_END, this.onJoyEnd, this);
     this.joyPanel.on(Node.EventType.TOUCH_CANCEL, this.onJoyEnd, this);
 
+    const circleD = Math.round(72 * ACTION_BTN_SCALE);
+    const actionSpacing = Math.round(14 * ACTION_BTN_SCALE);
+    const acWpx = Math.ceil(circleD * 1.05);
+    const acHpx = circleD * 2 + actionSpacing;
     const actions = new Node('TouchActions');
     const acUt = actions.addComponent(UITransform);
-    acUt.setContentSize(88, 168);
+    acUt.setContentSize(acWpx, acHpx);
     const acW = actions.addComponent(Widget);
     acW.isAlignRight = true;
     acW.isAlignBottom = true;
     acW.right = UI_EDGE_PAD;
-    acW.bottom = 100;
+    acW.bottom = BOARD_AREA_BOTTOM_PAD;
     this.touchActionsWidget = acW;
     const acLay = actions.addComponent(Layout);
     acLay.type = Layout.Type.VERTICAL;
-    acLay.spacingY = 14;
+    acLay.spacingY = actionSpacing;
     touchRoot.addChild(actions);
 
     const actionFill = new Color(
@@ -674,18 +699,18 @@ export class GameController extends Component {
       UiTheme.mossBtn2.b,
       255,
     );
-    const circleD = 72;
     const circleR = circleD * 0.5;
+    const actionFont = Math.min(30, Math.round(15 * ACTION_BTN_SCALE));
     const jump = makeLabelButton('跳跃', circleD, circleD, {
       fill: actionFill,
       cornerRadius: circleR,
-      fontSize: 15,
+      fontSize: actionFont,
     });
     actions.addChild(this.wrapBtn(jump, () => this.onJump()));
     const atk = makeLabelButton('攻击', circleD, circleD, {
       fill: actionFill,
       cornerRadius: circleR,
-      fontSize: 15,
+      fontSize: actionFont,
     });
     actions.addChild(this.wrapBtn(atk, () => this.onAttack()));
   }
@@ -715,19 +740,19 @@ export class GameController extends Component {
   private applySafeAreaInsets(): void {
     const sa = getSafeAreaInsets();
     this.leftRailWidget.left = sa.left;
-    this.leftRailWidget.top = sa.top + CENTER_TOP_FIXED_H;
+    this.leftRailWidget.top = sa.top + CENTER_TOP_MARGIN;
     this.leftRailWidget.bottom = sa.bottom;
     this.rightRailWidget.right = sa.right;
-    this.rightRailWidget.top = sa.top + CENTER_TOP_FIXED_H;
+    this.rightRailWidget.top = sa.top + CENTER_TOP_MARGIN;
     this.rightRailWidget.bottom = sa.bottom;
     this.centerColumnWidget.left = SIDE_RAIL_W + sa.left;
     this.centerColumnWidget.right = SIDE_RAIL_W + sa.right;
     this.centerColumnWidget.top = sa.top;
     this.centerColumnWidget.bottom = sa.bottom;
     this.joyWidget.left = UI_EDGE_PAD + sa.left;
-    this.joyWidget.bottom = 100 + sa.bottom;
+    this.joyWidget.bottom = BOARD_AREA_BOTTOM_PAD + sa.bottom;
     this.touchActionsWidget.right = UI_EDGE_PAD + sa.right;
-    this.touchActionsWidget.bottom = 100 + sa.bottom;
+    this.touchActionsWidget.bottom = BOARD_AREA_BOTTOM_PAD + sa.bottom;
   }
 
   private layoutScreen(): void {
@@ -931,8 +956,8 @@ export class GameController extends Component {
     this.levelsModalRoot.addChild(backdrop);
 
     const pw = Math.min(
-      MODAL_PANEL_WIDTH,
-      Math.max(280, vs.width - LAYOUT_H_PAD * 2),
+      MODAL_LEVELS_PANEL_WIDTH,
+      Math.max(300, vs.width - LAYOUT_H_PAD * 2),
     );
     const ph = MODAL_LEVELS_PANEL_HEIGHT;
 
@@ -965,17 +990,26 @@ export class GameController extends Component {
     );
     levelsTitle.string = '全部关卡';
 
-    const gridW = Math.max(220, pw - 40);
+    const padX = 20;
+    const gridInnerW = Math.max(200, pw - padX * 2);
+    const cols = 6;
+    const gap = 8;
+    const cellW = Math.max(
+      44,
+      Math.floor((gridInnerW - gap * (cols - 1)) / cols),
+    );
+    const cellH = 44;
+
     const grid = new Node('LevelsGrid');
     const gUt = grid.addComponent(UITransform);
-    gUt.setContentSize(gridW, 300);
+    gUt.setContentSize(gridInnerW, 300);
     const gLay = grid.addComponent(Layout);
     gLay.type = Layout.Type.GRID;
     gLay.resizeMode = Layout.ResizeMode.CONTAINER;
-    gLay.spacingX = 8;
-    gLay.spacingY = 8;
+    gLay.spacingX = gap;
+    gLay.spacingY = gap;
     gLay.constraint = Layout.Constraint.FIXED_COL;
-    gLay.constraintNum = 6;
+    gLay.constraintNum = cols;
     const gw = grid.addComponent(Widget);
     gw.isAlignTop = true;
     gw.isAlignHorizontalCenter = true;
@@ -988,10 +1022,11 @@ export class GameController extends Component {
       UiTheme.modalActionBtnFill.b,
       255,
     );
+    const cellFont = Math.min(18, Math.max(14, Math.floor(cellW * 0.28)));
     for (let i = 1; i <= MAX_LEVELS; i++) {
-      const b = makeLabelButton(String(i), 64, 44, {
+      const b = makeLabelButton(String(i), cellW, cellH, {
         fill: lvPickFill,
-        fontSize: 17,
+        fontSize: cellFont,
       });
       grid.addChild(b);
       b.on(
@@ -1046,9 +1081,10 @@ export class GameController extends Component {
   }
 
   private drawJoyChrome(): void {
+    const half = JOY_PANEL_SIZE * 0.5;
     const ring = new Node('JoyRing');
     const rut = ring.addComponent(UITransform);
-    rut.setContentSize(140, 140);
+    rut.setContentSize(JOY_PANEL_SIZE, JOY_PANEL_SIZE);
     const rg = ring.addComponent(Graphics);
     rg.fillColor = new Color(
       UiTheme.mossPanel.r,
@@ -1056,7 +1092,7 @@ export class GameController extends Component {
       UiTheme.mossPanel.b,
       140,
     );
-    rg.roundRect(-70, -70, 140, 140, 70);
+    rg.roundRect(-half, -half, JOY_PANEL_SIZE, JOY_PANEL_SIZE, half);
     rg.fill();
     rg.strokeColor = new Color(
       UiTheme.leafLine.r,
@@ -1065,10 +1101,11 @@ export class GameController extends Component {
       200,
     );
     rg.lineWidth = 2;
-    rg.roundRect(-70, -70, 140, 140, 70);
+    rg.roundRect(-half, -half, JOY_PANEL_SIZE, JOY_PANEL_SIZE, half);
     rg.stroke();
     this.joyPanel.insertChild(ring, 0);
 
+    const knobR = 26 * JOY_SCALE;
     const knobG = this.joyKnob.addComponent(Graphics);
     knobG.fillColor = new Color(
       UiTheme.cream.r,
@@ -1076,7 +1113,7 @@ export class GameController extends Component {
       UiTheme.cream.b,
       230,
     );
-    knobG.circle(0, 0, 26);
+    knobG.circle(0, 0, knobR);
     knobG.fill();
   }
 
@@ -1117,9 +1154,6 @@ export class GameController extends Component {
       MAX_LEVELS,
       Math.max(1, Math.floor(this.sim.level) || 1),
     );
-    const lw = 64;
-    const lh = 44;
-    const corner = defaultBtnCornerRadius(lw, lh);
     const unlockedFill = new Color(
       UiTheme.modalActionBtnFill.r,
       UiTheme.modalActionBtnFill.g,
@@ -1127,9 +1161,9 @@ export class GameController extends Component {
       255,
     );
     const lockedFill = new Color(
-      UiTheme.barkDeep.r,
-      UiTheme.barkDeep.g,
-      UiTheme.barkDeep.b,
+      UiTheme.levelPickLockedFill.r,
+      UiTheme.levelPickLockedFill.g,
+      UiTheme.levelPickLockedFill.b,
       255,
     );
     for (let i = 0; i < this.levelPickNodes.length; i++) {
@@ -1138,6 +1172,10 @@ export class GameController extends Component {
       const btn = n.getComponent(Button)!;
       const unlocked = lv <= maxU;
       btn.interactable = unlocked;
+      const ut = n.getComponent(UITransform);
+      const lw = ut?.width ?? 64;
+      const lh = ut?.height ?? 44;
+      const corner = defaultBtnCornerRadius(lw, lh);
       const bg = n.getChildByName('BtnBg')?.getComponent(Graphics);
       if (bg) {
         if (unlocked) {
@@ -1162,11 +1200,18 @@ export class GameController extends Component {
           );
         }
       }
-      n.getComponentInChildren(Label)!.color = unlocked
-        ? lv === cur
-          ? UiTheme.honey
-          : UiTheme.cream
-        : UiTheme.locked;
+      const lab = n.getComponentInChildren(Label)!;
+      lab.string = String(lv);
+      if (unlocked) {
+        lab.color = lv === cur ? UiTheme.honey : UiTheme.cream;
+      } else {
+        lab.color = new Color(
+          UiTheme.levelPickLockedDigit.r,
+          UiTheme.levelPickLockedDigit.g,
+          UiTheme.levelPickLockedDigit.b,
+          255,
+        );
+      }
     }
   }
 
@@ -1232,7 +1277,7 @@ export class GameController extends Component {
         vs.height -
           sa.top -
           sa.bottom -
-          CENTER_TOP_FIXED_H -
+          CENTER_TOP_MARGIN -
           BOARD_AREA_BOTTOM_PAD,
       );
     }
@@ -1321,9 +1366,9 @@ export class GameController extends Component {
     }
     this.endModalShown = false;
     this.hideResultModal();
-    const wasWin = this.sim.gameEnd === 'win';
-    this.gameRunning = wasWin;
-    this.resetLevelWithPolicy(nextLv, mapLinesForPlay(), false);
+    this.gameRunning = false;
+    this.gameAudio.pauseBgm();
+    this.resetLevelWithPolicy(nextLv, mapLinesForPlay(), true);
     this.anim.snapToGrid(this.sim.catX, this.sim.catY);
     saveProgressToDisk(this.sim);
     gameSession.initFromDisk();
@@ -1391,6 +1436,25 @@ export class GameController extends Component {
       this.modalSub.string = '这群杰瑞太狡猾了，再来一次吧';
       this.modalBtnNext.node.active = false;
     }
+    this.layoutEndModalActionRow();
+  }
+
+  /** 仅「重玩」时收窄行动条，使按钮相对弹窗水平居中 */
+  private layoutEndModalActionRow(): void {
+    const row = this.modalBtnReplay.node.parent;
+    if (!row) return;
+    const rUt = row.getComponent(UITransform);
+    const layout = row.getComponent(Layout);
+    if (!rUt || !layout) return;
+    const gap = layout.spacingX;
+    const showNext = this.modalBtnNext.node.active;
+    const replayW = this.modalBtnReplay.node.getComponent(UITransform)!.width;
+    const nextW = showNext
+      ? this.modalBtnNext.node.getComponent(UITransform)!.width
+      : 0;
+    const w = showNext ? replayW + gap + nextW : replayW;
+    rUt.setContentSize(w, rUt.height);
+    layout.updateLayout(true);
   }
 
   private onJump(): void {

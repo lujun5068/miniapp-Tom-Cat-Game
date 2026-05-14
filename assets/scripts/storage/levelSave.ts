@@ -1,5 +1,5 @@
-import { sys } from 'cc';
 import { MAX_LEVELS } from '../game/levelMeta';
+import { storageGetItem, storageRemoveItem, storageSetItem } from './platformKv';
 
 const KEY = 'cat-game-level-v1';
 
@@ -21,7 +21,7 @@ const defaultSave = (): LevelSaveV1 => ({
 
 export function loadLevelSave(): LevelSaveV1 {
   try {
-    const raw = sys.localStorage.getItem(KEY);
+    const raw = storageGetItem(KEY);
     if (!raw) return defaultSave();
     const o = JSON.parse(raw) as Partial<LevelSaveV1>;
     if (o.version !== 1) return defaultSave();
@@ -50,7 +50,7 @@ export function loadLevelSave(): LevelSaveV1 {
 
 export function writeLevelSave(data: LevelSaveV1): void {
   try {
-    sys.localStorage.setItem(KEY, JSON.stringify(data));
+    storageSetItem(KEY, JSON.stringify(data));
   } catch {
     /* ignore */
   }
@@ -58,7 +58,7 @@ export function writeLevelSave(data: LevelSaveV1): void {
 
 export function clearLevelSave(): void {
   try {
-    sys.localStorage.removeItem(KEY);
+    storageRemoveItem(KEY);
   } catch {
     /* ignore */
   }

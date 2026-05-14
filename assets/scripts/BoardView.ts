@@ -69,6 +69,10 @@ export class BoardView extends Component {
   private mapFrames: Partial<MapTileSpriteFrames> | null = null;
   private catFrame: SpriteFrame | null = null;
   private mouseFrame: SpriteFrame | null = null;
+  /** 纵向移动时贴图；空则与 mouseFrame 共用 */
+  private mouseFrameVertical: SpriteFrame | null = null;
+  /** 相对默认老鼠显示尺寸的缩放（默认 1） */
+  private mouseDisplayScale = 1;
 
   /** 地板 / 外圈 / 内圈石头贴图相对单格的缩放（默认 1 与格对齐） */
   private mapTileScales: MapTileDisplayScales = {
@@ -117,6 +121,21 @@ export class BoardView extends Component {
     this.catFrame = cat;
     this.mouseFrame = mouse;
     this.markMapDirty();
+  }
+
+  /**
+   * 老鼠精灵：纵向贴图与整体显示缩放（由 GameController 绑定 Inspector）。
+   */
+  setMouseVisualOptions(opts: {
+    verticalFrame?: SpriteFrame | null;
+    displayScale?: number;
+  }): void {
+    if (opts.verticalFrame !== undefined) {
+      this.mouseFrameVertical = opts.verticalFrame;
+    }
+    if (opts.displayScale !== undefined && Number.isFinite(opts.displayScale)) {
+      this.mouseDisplayScale = Math.max(0.25, Math.min(4, opts.displayScale));
+    }
   }
 
   /**
@@ -375,6 +394,7 @@ export class BoardView extends Component {
 
     if (this.mouseFrame) {
       const seen = new Set<number>();
+      const baseSide = Math.min(t * 0.22, 11) * 2.2 * this.mouseDisplayScale;
       for (const m of sim.mice) {
         seen.add(m.id);
         let n = this.miceRoot.getChildByName(`m-${m.id}`);
@@ -384,11 +404,14 @@ export class BoardView extends Component {
           ut.setAnchorPoint(0.5, 0.5);
           const sp = n.addComponent(Sprite);
           sp.spriteFrame = this.mouseFrame;
+          sp.type = Sprite.Type.SIMPLE;
           sp.sizeMode = Sprite.SizeMode.CUSTOM;
-          const mr = Math.min(t * 0.22, 11) * 2.2;
-          ut.setContentSize(mr, mr);
+          ut.setContentSize(baseSide, baseSide);
           this.miceRoot.addChild(n);
         }
+        const sp = n.getComponent(Sprite)!;
+        const ut = n.getComponent(UITransform)!;
+        ut.setContentSize(baseSide, baseSide);
         const p = cellCenterLocal(m.x, m.y, gw, gh, t);
         n.setPosition(p.x, p.y, 0);
         const prev = this.mousePrevGrid.get(m.id);
@@ -396,11 +419,15 @@ export class BoardView extends Component {
           const dx = m.x - prev.x;
           const dy = m.y - prev.y;
           if (dx !== 0) {
-            n.setScale(dx < 0 ? -1 : 1, 1, 1);
+            sp.spriteFrame = this.mouseFrame;
+            /* 贴图默认朝向与网格位移相反时需左右翻转 */
+            n.setScale(dx > 0 ? -1 : 1, 1, 1);
           } else if (dy !== 0) {
-            n.setScale(1, dy < 0 ? -1 : 1, 1);
+            sp.spriteFrame = this.mouseFrameVertical ?? this.mouseFrame;
+            n.setScale(1, dy > 0 ? -1 : 1, 1);
           }
         } else if (!prev) {
+          sp.spriteFrame = this.mouseFrame;
           n.setScale(1, 1, 1);
         }
         this.mousePrevGrid.set(m.id, { x: m.x, y: m.y });

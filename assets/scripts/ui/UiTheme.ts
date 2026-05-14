@@ -30,6 +30,10 @@ export const UiTheme = {
   modalBtnStroke: new Color(255, 252, 240, 220),
   /** 与弹窗主按钮一致的 UI 按钮描边线宽（侧栏、关卡格、圆形操作钮等） */
   modalBtnStrokeWidth: 3,
+  /** 关卡弹窗中未解锁关卡格底色（与深绿面板区分） */
+  levelPickLockedFill: new Color(72, 78, 68, 255),
+  /** 未解锁关卡数字颜色（高对比） */
+  levelPickLockedDigit: new Color(236, 240, 232, 255),
   panelTop: new Color(42, 56, 40, 255),
   panelBot: new Color(30, 42, 28, 255),
   locked: new Color(32, 40, 30, 210),
@@ -44,7 +48,10 @@ export const MODAL_PANEL_WIDTH = 420;
 /** 结算弹窗面板高度 */
 export const MODAL_END_PANEL_HEIGHT = 280;
 
-/** 全部关卡弹窗面板高度（与结算同宽、同色与描边体系） */
+/** 全部关卡弹窗面板宽度上限（需容纳 6 列关卡格，实际宽度取屏幕与上限的较小值） */
+export const MODAL_LEVELS_PANEL_WIDTH = 560;
+
+/** 全部关卡弹窗面板高度 */
 export const MODAL_LEVELS_PANEL_HEIGHT = 420;
 
 /** 顶栏 / 普通圆角按钮（对应 `#top-bar button`） */

@@ -1,4 +1,4 @@
-import { sys } from 'cc';
+import { storageGetItem, storageSetItem } from './platformKv';
 
 const KEY = 'cat-game-audio-v1';
 
@@ -16,7 +16,7 @@ const defaultSettings = (): AudioSettingsV1 => ({
 
 export function loadAudioSettings(): AudioSettingsV1 {
   try {
-    const raw = sys.localStorage.getItem(KEY);
+    const raw = storageGetItem(KEY);
     if (!raw) return defaultSettings();
     const o = JSON.parse(raw) as Partial<AudioSettingsV1>;
     if (o.version !== 1) return defaultSettings();
@@ -32,7 +32,7 @@ export function loadAudioSettings(): AudioSettingsV1 {
 
 export function saveAudioSettings(s: AudioSettingsV1): void {
   try {
-    sys.localStorage.setItem(KEY, JSON.stringify(s));
+    storageSetItem(KEY, JSON.stringify(s));
   } catch {
     /* ignore */
   }
