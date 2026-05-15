@@ -8,6 +8,8 @@ import {
   Sprite,
   SpriteFrame,
   UITransform,
+  Label,
+  BatchNode,
 } from 'cc';
 import { Cell } from './game/types';
 import type { GameSimulation } from './game/simulation';
@@ -71,9 +73,18 @@ function cellCenterLocal(
   };
 }
 
-function clearChildren(node: Node): void {
+function clearChildren(node: Node, pool?: Node[]): void {
   for (let i = node.children.length - 1; i >= 0; i--) {
-    node.children[i].destroy();
+    const child = node.children[i];
+    if (pool) {
+      // 回收节点到对象池
+      child.removeFromParent();
+      child.active = false;
+      pool.push(child);
+    } else {
+      // 直接销毁节点
+      child.destroy();
+    }
   }
 }
 
@@ -112,6 +123,10 @@ export class BoardView extends Component {
 
   private lastMapToken = '';
   private readonly mousePrevGrid = new Map<number, { x: number; y: number }>();
+  
+  /** 对象池 */
+  private readonly spritePool: Node[] = [];
+  private readonly mousePool: Node[] = [];
 
   onLoad(): void {
     this.mapGroundLayer = new Node('MapGround');
@@ -247,12 +262,12 @@ export class BoardView extends Component {
   }
 
   private rebuildMap(sim: GameSimulation): void {
-    clearChildren(this.mapGroundLayer);
-    clearChildren(this.mapStoneLayer);
+    clearChildren(this.mapGroundLayer, this.spritePool);
+    clearChildren(this.mapStoneLayer, this.spritePool);
     this.mapGfx.clear();
     this.mapObstacleGfx.clear();
     this.mousePrevGrid.clear();
-    clearChildren(this.miceRoot);
+    clearChildren(this.miceRoot, this.mousePool);
 
     const f = this.mapFrames;
     if (!hasFloorSprite(f)) {
@@ -397,15 +412,26 @@ export class BoardView extends Component {
     ax: number,
     ay: number,
   ): void {
-    const n = new Node('cell');
-    const ut = n.addComponent(UITransform);
-    ut.setAnchorPoint(ax, ay);
+    let n: Node;
+    if (this.spritePool.length > 0) {
+      // 从对象池获取节点
+      n = this.spritePool.pop()!;
+      n.parent = parent;
+      n.active = true;
+    } else {
+      // 创建新节点
+      n = new Node('cell');
+      const ut = n.addComponent(UITransform);
+      ut.setAnchorPoint(ax, ay);
+      const sp = n.addComponent(Sprite);
+      sp.type = Sprite.Type.SIMPLE;
+      sp.sizeMode = Sprite.SizeMode.CUSTOM;
+    }
+    
     n.setPosition(cx, cy, 0);
-    const sp = n.addComponent(Sprite);
-    /* 必须先 CUSTOM，再赋 spriteFrame；否则赋帧时会用贴图原始尺寸覆盖 UITransform */
-    sp.type = Sprite.Type.SIMPLE;
-    sp.sizeMode = Sprite.SizeMode.CUSTOM;
+    const sp = n.getComponent(Sprite)!;
     sp.spriteFrame = frame;
+    const ut = n.getComponent(UITransform)!;
     ut.setContentSize(w, h);
     parent.addChild(n);
   }
@@ -509,15 +535,22 @@ export class BoardView extends Component {
         seen.add(m.id);
         let n = this.miceRoot.getChildByName(`m-${m.id}`);
         if (!n) {
-          n = new Node(`m-${m.id}`);
-          const ut = n.addComponent(UITransform);
-          ut.setAnchorPoint(0.5, 0.5);
-          const sp = n.addComponent(Sprite);
-          sp.spriteFrame = this.mouseFrame;
-          sp.type = Sprite.Type.SIMPLE;
-          sp.sizeMode = Sprite.SizeMode.CUSTOM;
-          ut.setContentSize(baseSide, baseSide);
-          this.miceRoot.addChild(n);
+          // 从对象池获取节点
+          if (this.mousePool.length > 0) {
+            n = this.mousePool.pop()!;
+            n.name = `m-${m.id}`;
+            n.parent = this.miceRoot;
+            n.active = true;
+          } else {
+            // 创建新节点
+            n = new Node(`m-${m.id}`);
+            const ut = n.addComponent(UITransform);
+            ut.setAnchorPoint(0.5, 0.5);
+            const sp = n.addComponent(Sprite);
+            sp.type = Sprite.Type.SIMPLE;
+            sp.sizeMode = Sprite.SizeMode.CUSTOM;
+            this.miceRoot.addChild(n);
+          }
         }
         const sp = n.getComponent(Sprite)!;
         const ut = n.getComponent(UITransform)!;
@@ -545,7 +578,10 @@ export class BoardView extends Component {
       for (const c of [...this.miceRoot.children]) {
         const id = Number(c.name.slice(2));
         if (!seen.has(id)) {
-          c.destroy();
+          // 回收节点到对象池
+          c.removeFromParent();
+          c.active = false;
+          this.mousePool.push(c);
           this.mousePrevGrid.delete(id);
         }
       }

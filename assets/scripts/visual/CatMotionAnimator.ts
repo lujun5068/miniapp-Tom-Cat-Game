@@ -164,40 +164,42 @@ export class CatMotionAnimator {
       if (next) {
         this.begin(next);
       } else {
+        // 直接设置位置，避免每次都计算
         const c = gridCenterPx(catGridX, catGridY, this.gridW, this.gridH, this.tile);
-        this.px = c.x;
-        this.py = c.y;
+        if (this.px !== c.x || this.py !== c.y) {
+          this.px = c.x;
+          this.py = c.y;
+        }
         return;
       }
     }
 
     const a = this.active;
     if (!a) return;
+    
+    // 避免除以零
+    const dtNormalized = dt > 0 ? dt : 0.001;
+    
     if (a.kind === 'walk') {
-      a.t += dt / a.dur;
-      const u = Math.min(1, easeOutQuad(a.t));
-      this.px = lerp(a.fromX, a.toX, u);
-      this.py = lerp(a.fromY, a.toY, u);
+      a.t += dtNormalized / a.dur;
       if (a.t >= 1) {
         this.px = a.toX;
         this.py = a.toY;
         this.active = null;
+        return;
       }
+      const u = easeOutQuad(a.t);
+      this.px = lerp(a.fromX, a.toX, u);
+      this.py = lerp(a.fromY, a.toY, u);
       return;
     }
 
     if (a.kind === 'attack') {
+      // 预计算中间点
       const midX = lerp(a.fromX, a.toX, 0.55);
       const midY = lerp(a.fromY, a.toY, 0.55);
-      a.t += dt / a.durSeg;
-      const u = Math.min(1, easeOutQuad(a.t));
-      if (a.seg === 0) {
-        this.px = lerp(a.fromX, midX, u);
-        this.py = lerp(a.fromY, midY, u);
-      } else {
-        this.px = lerp(midX, a.toX, u);
-        this.py = lerp(midY, a.toY, u);
-      }
+      
+      a.t += dtNormalized / a.durSeg;
       if (a.t >= 1) {
         if (a.seg === 0) {
           a.seg = 1;
@@ -207,22 +209,25 @@ export class CatMotionAnimator {
           this.py = a.toY;
           this.active = null;
         }
+        return;
+      }
+      
+      const u = easeOutQuad(a.t);
+      if (a.seg === 0) {
+        this.px = lerp(a.fromX, midX, u);
+        this.py = lerp(a.fromY, midY, u);
+      } else {
+        this.px = lerp(midX, a.toX, u);
+        this.py = lerp(midY, a.toY, u);
       }
       return;
     }
 
+    // 跳跃动画
     const midX = lerp(a.fromX, a.toX, 0.5);
     const midY = lerp(a.fromY, a.toY, 0.5);
-    a.t += dt / a.durSeg;
-    const u = Math.min(1, easeOutQuad(a.t));
-    const arc = Math.sin(u * Math.PI);
-    if (a.seg === 0) {
-      this.px = lerp(a.fromX, midX, u) + a.perpX * arc;
-      this.py = lerp(a.fromY, midY, u) + a.perpY * arc;
-    } else {
-      this.px = lerp(midX, a.toX, u) + a.perpX * arc;
-      this.py = lerp(midY, a.toY, u) + a.perpY * arc;
-    }
+    
+    a.t += dtNormalized / a.durSeg;
     if (a.t >= 1) {
       if (a.seg === 0) {
         a.seg = 1;
@@ -232,6 +237,17 @@ export class CatMotionAnimator {
         this.py = a.toY;
         this.active = null;
       }
+      return;
+    }
+    
+    const u = easeOutQuad(a.t);
+    const arc = Math.sin(u * Math.PI);
+    if (a.seg === 0) {
+      this.px = lerp(a.fromX, midX, u) + a.perpX * arc;
+      this.py = lerp(a.fromY, midY, u) + a.perpY * arc;
+    } else {
+      this.px = lerp(midX, a.toX, u) + a.perpX * arc;
+      this.py = lerp(midY, a.toY, u) + a.perpY * arc;
     }
   }
 

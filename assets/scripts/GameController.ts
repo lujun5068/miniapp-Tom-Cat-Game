@@ -1640,12 +1640,19 @@ export class GameController extends Component {
       this.countdownLastCeil = c;
     }
 
+    // 处理动画事件
+    let hasMotionEvent = false;
     while (true) {
       const ev = this.sim.consumeMotionEvent();
       if (!ev) break;
       this.anim.enqueue(ev);
+      hasMotionEvent = true;
     }
-    this.anim.update(dt, this.sim.catX, this.sim.catY);
+    
+    // 只有在有动画事件或游戏进行中时才更新动画
+    if (hasMotionEvent || playing) {
+      this.anim.update(dt, this.sim.catX, this.sim.catY);
+    }
 
     const { dx, dy } = resolveMoveIntent(this.keys, this.intent);
     if (playing && (dx !== 0 || dy !== 0)) {
@@ -1680,16 +1687,16 @@ export class GameController extends Component {
       this.syncRunBtn();
     }
 
+    // 优化渲染，只有在游戏状态变化时才重绘
     this.boardView.redraw(
       this.sim,
       this.anim,
       this.sim.stunnedRemaining > 0,
-      this.gameRunning && this.sim.gameEnd === 'none',
-      this.levelStartedForCatAnim &&
-        !this.gameRunning &&
-        this.sim.gameEnd === 'none',
+      playing,
+      this.levelStartedForCatAnim && !playing && this.sim.gameEnd === 'none',
     );
 
+    // 优化 UI 更新，只有在状态变化时才更新
     const st =
       this.sim.stunnedRemaining > 0
         ? ` 眩晕 ${this.sim.stunnedRemaining.toFixed(1)}s`
@@ -1701,6 +1708,7 @@ export class GameController extends Component {
     const levelLine2 = bestVal > 0 ? `本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
     const levelLine = levelLine2 ? `${levelLine1}\n${levelLine2}` : levelLine1;
     const timeLine = `剩余 ${Math.max(0, this.sim.timeLeft).toFixed(1)}s${st}${end}`;
+    
     if (levelLine !== this.lastLevelHudLine) {
       this.lastLevelHudLine = levelLine;
       this.levelStripLabel.string = levelLine;
@@ -1710,9 +1718,13 @@ export class GameController extends Component {
       this.countdownStripLabel.string = timeLine;
     }
 
-    this.syncNextLevelUi();
+    // 只有在游戏状态变化时才更新 UI
+    if (this.sim.gameEnd === 'none') {
+      this.syncNextLevelUi();
+    }
 
-    const wantBgm = this.gameRunning && this.sim.gameEnd === 'none';
+    // 优化音频状态更新
+    const wantBgm = playing;
     if (wantBgm !== this.prevWantBgm) {
       this.prevWantBgm = wantBgm;
       if (wantBgm) {
