@@ -2,6 +2,7 @@ import {
   _decorator,
   Color,
   Component,
+  director,
   Graphics,
   Node,
   Sprite,
@@ -23,6 +24,33 @@ import {
 } from './render/MapTileSpriteFrames';
 
 const { ccclass } = _decorator;
+
+type CatAnimKey = 'start' | 'walkH' | 'walkV' | 'stun';
+
+type CatAnimPack = {
+  secPerFrame: number;
+  start: SpriteFrame[];
+  walkH: SpriteFrame[];
+  walkV: SpriteFrame[];
+  stun: SpriteFrame[];
+};
+
+const CAT_VERTICAL_ANIM_SCALE = 0.75;
+
+/** 按资源名中的 frame_序号 排序（如从 GIF 拆出的 frame_00_delay-0.2s） */
+function sortCatSpriteFrames(frames: SpriteFrame[]): SpriteFrame[] {
+  const frameIndex = (sf: SpriteFrame): number => {
+    const name = sf.name ?? '';
+    const m = /frame_(\d+)/i.exec(name);
+    return m ? parseInt(m[1], 10) : 0;
+  };
+  return [...frames]
+    .filter((f) => !!f)
+    .sort((a, b) => {
+      const d = frameIndex(a) - frameIndex(b);
+      return d !== 0 ? d : (a.uuid ?? '').localeCompare(b.uuid ?? '');
+    });
+}
 
 function isMapOuterRing(x: number, y: number, w: number, h: number): boolean {
   return x === 0 || y === 0 || x === w - 1 || y === h - 1;
@@ -68,6 +96,9 @@ export class BoardView extends Component {
 
   private mapFrames: Partial<MapTileSpriteFrames> | null = null;
   private catFrame: SpriteFrame | null = null;
+  private catAnim: CatAnimPack | null = null;
+  private catAnimTime = 0;
+  private catAnimStateKey: CatAnimKey | '' = '';
   private mouseFrame: SpriteFrame | null = null;
   /** 纵向移动时贴图；空则与 mouseFrame 共用 */
   private mouseFrameVertical: SpriteFrame | null = null;
@@ -139,6 +170,39 @@ export class BoardView extends Component {
   }
 
   /**
+   * 猫多帧动画：`start` / `walk1`(水平) / `walk2`(纵向) / `xuanyun`(眩晕)。
+   * 各数组在 Inspector 中拖入对应文件夹下全部 SpriteFrame 即可（可不手动排序）。
+   * 若某状态数组为空，则回退到 `sfCat` 单帧（由 `configureSprites` 传入）。
+   */
+  configureCatFrameAnimations(opts: {
+    framesStart?: SpriteFrame[] | null;
+    framesWalkHorizontal?: SpriteFrame[] | null;
+    framesWalkVertical?: SpriteFrame[] | null;
+    framesStun?: SpriteFrame[] | null;
+    frameDurationSec?: number;
+  }): void {
+    const start = sortCatSpriteFrames([...(opts.framesStart ?? [])]);
+    const walkH = sortCatSpriteFrames([...(opts.framesWalkHorizontal ?? [])]);
+    const walkV = sortCatSpriteFrames([...(opts.framesWalkVertical ?? [])]);
+    const stun = sortCatSpriteFrames([...(opts.framesStun ?? [])]);
+    if (!start.length && !walkH.length && !walkV.length && !stun.length) {
+      this.catAnim = null;
+      this.catAnimStateKey = '';
+      this.catAnimTime = 0;
+      return;
+    }
+    this.catAnim = {
+      secPerFrame: Math.max(0.04, opts.frameDurationSec ?? 0.2),
+      start,
+      walkH,
+      walkV,
+      stun,
+    };
+    this.catAnimStateKey = '';
+    this.catAnimTime = 0;
+  }
+
+  /**
    * 配置地图格贴图缩放（相对 `tileSize`）。可在运行时或 Inspector 绑定脚本里调用。
    * 未传入的键保持当前值；首次合并前内部默认为 1。
    */
@@ -152,7 +216,13 @@ export class BoardView extends Component {
     this.lastMapToken = '';
   }
 
-  redraw(sim: GameSimulation, anim: CatMotionAnimator, stunned: boolean): void {
+  redraw(
+    sim: GameSimulation,
+    anim: CatMotionAnimator,
+    stunned: boolean,
+    isPlaying: boolean,
+    orientStartToFacing: boolean,
+  ): void {
     const gw = sim.grid.width;
     const gh = sim.grid.height;
     const t = this.tileSize;
@@ -164,7 +234,16 @@ export class BoardView extends Component {
       this.rebuildMap(sim);
     }
 
-    this.drawEntities(sim, anim, stunned, gw, gh, t);
+    this.drawEntities(
+      sim,
+      anim,
+      stunned,
+      isPlaying,
+      orientStartToFacing,
+      gw,
+      gh,
+      t,
+    );
   }
 
   private rebuildMap(sim: GameSimulation): void {
@@ -362,6 +441,8 @@ export class BoardView extends Component {
     sim: GameSimulation,
     anim: CatMotionAnimator,
     stunned: boolean,
+    isPlaying: boolean,
+    orientStartToFacing: boolean,
     gw: number,
     gh: number,
     t: number,
@@ -371,18 +452,47 @@ export class BoardView extends Component {
 
     this.entityGfx.clear();
 
-    if (this.catFrame) {
+    const dt = director.getDeltaTime();
+    const {
+      frame: catSprite,
+      softenStunTint,
+      visualScale: catVisualScale,
+      key: catAnimKey,
+    } = this.resolveCatDisplay(sim, anim, stunned, isPlaying, dt);
+
+    if (catSprite) {
       this.catSpr.enabled = true;
-      this.catSpr.spriteFrame = this.catFrame;
+      this.catSpr.spriteFrame = catSprite;
       this.catSpr.sizeMode = Sprite.SizeMode.CUSTOM;
       const cut = this.catNode.getComponent(UITransform)!;
       const side = catR * 2.2;
       cut.setContentSize(side, side);
       this.catNode.setPosition(cat.x, cat.y, 0);
-      const flip = sim.facing.dx < 0 ? -1 : 1;
-      this.catNode.setScale(flip, 1, 1);
-      this.catNode.angle = sim.facing.dy > 0 ? 180 : 0;
-      this.catSpr.color = stunned ? new Color(255, 200, 200, 255) : Color.WHITE;
+      const flip =
+        catAnimKey === 'start' && !orientStartToFacing
+          ? 1
+          : catAnimKey === 'start'
+            ? sim.facing.dx < 0
+              ? -1
+              : 1
+            : sim.facing.dx > 0
+              ? -1
+              : 1;
+      this.catNode.setScale(flip * catVisualScale, catVisualScale, 1);
+      let angle = sim.facing.dy > 0 ? 180 : 0;
+      if (catAnimKey === 'start') {
+        if (!orientStartToFacing) {
+          angle = 0;
+        } else if (sim.facing.dy < 0) {
+          angle = 90;
+        } else if (sim.facing.dy > 0) {
+          angle = 270;
+        }
+      }
+      this.catNode.angle = angle;
+      this.catSpr.color = softenStunTint
+        ? new Color(255, 200, 200, 255)
+        : Color.WHITE;
     } else {
       this.catSpr.enabled = false;
       this.entityGfx.fillColor = stunned
@@ -447,5 +557,80 @@ export class BoardView extends Component {
         this.entityGfx.fill();
       }
     }
+  }
+
+  private resolveCatDisplay(
+    sim: GameSimulation,
+    anim: CatMotionAnimator,
+    stunned: boolean,
+    isPlaying: boolean,
+    dt: number,
+  ): {
+    frame: SpriteFrame | null;
+    softenStunTint: boolean;
+    visualScale: number;
+    key: CatAnimKey;
+  } {
+    const pack = this.catAnim;
+    if (!pack) {
+      return {
+        frame: this.catFrame,
+        softenStunTint: stunned,
+        visualScale: 1,
+        key: 'start',
+      };
+    }
+
+    let key: CatAnimKey = 'start';
+    if (stunned && pack.stun.length > 0) {
+      key = 'stun';
+    } else {
+      const mk = anim.getActiveMotionKind();
+      if (mk === 'walk') {
+        const h = anim.getWalkIsHorizontal();
+        if (h === true) key = 'walkH';
+        else if (h === false) key = 'walkV';
+        else key = 'start';
+      } else if (isPlaying) {
+        key = sim.facing.dx !== 0 ? 'walkH' : 'walkV';
+      } else {
+        key = 'start';
+      }
+    }
+
+    const stripOf = (k: CatAnimKey): SpriteFrame[] => {
+      if (k === 'stun') return pack.stun;
+      if (k === 'walkH') return pack.walkH;
+      if (k === 'walkV') return pack.walkV;
+      return pack.start;
+    };
+
+    let strip = stripOf(key);
+    if (!strip.length && key !== 'start') {
+      strip = stripOf('start');
+    }
+    if (!strip.length) {
+      return {
+        frame: this.catFrame,
+        softenStunTint: stunned && !(key === 'stun' && pack.stun.length > 0),
+        visualScale: key === 'walkV' ? CAT_VERTICAL_ANIM_SCALE : 1,
+        key,
+      };
+    }
+
+    if (key !== this.catAnimStateKey) {
+      this.catAnimStateKey = key;
+      this.catAnimTime = 0;
+    }
+    this.catAnimTime += dt;
+    const idx = Math.floor(this.catAnimTime / pack.secPerFrame) % strip.length;
+    const frame = strip[idx] ?? null;
+    const showingStunSheet = key === 'stun' && pack.stun.length > 0;
+    return {
+      frame,
+      softenStunTint: stunned && !showingStunSheet,
+      visualScale: key === 'walkV' ? CAT_VERTICAL_ANIM_SCALE : 1,
+      key,
+    };
   }
 }

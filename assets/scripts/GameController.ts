@@ -1,7 +1,7 @@
 /**
  * 使用方式：在 Creator 中打开/新建场景 → 选中 Canvas 节点 → 添加组件「GameController」→ 保存场景 → 运行预览。
  * 音频：在 Inspector 中为 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。顶栏音乐/音效开关与关卡存档经 `storage/platformKv` 写入：微信小游戏构建下走 **`wx.setStorageSync`**，其余平台走 **`sys.localStorage`**（键名与网页版一致）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用 **mp3** 等再绑定。
- * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` / `sfMouse` 为单帧占位；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
+ * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` 为猫单帧回退；`catAnimFramesStart` / `WalkHorizontal`（walk1）/ `WalkVertical`（walk2）/ `Stun`（xuanyun）为猫四态序列帧（可空则仅用 `sfCat`）。`sfMouse` 为老鼠单帧；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
  */
 import {
   _decorator,
@@ -290,8 +290,38 @@ export class GameController extends Component {
   @property({ type: SpriteFrame, tooltip: '内障碍石纹 2（可空）' })
   sfMapStone2: SpriteFrame | null = null;
 
-  @property({ type: SpriteFrame, tooltip: '猫单帧（可空则圆点）' })
+  @property({ type: SpriteFrame, tooltip: '猫单帧（可空则圆点；有动画帧组时作回退）' })
   sfCat: SpriteFrame | null = null;
+
+  @property({
+    type: [SpriteFrame],
+    tooltip:
+      '猫起始/待机：`assets/images/cat/start` 下各帧（可不排序，按 frame_序号播放）',
+  })
+  catAnimFramesStart: SpriteFrame[] = [];
+
+  @property({
+    type: [SpriteFrame],
+    tooltip: '猫水平移动：`assets/images/cat/walk1` 各帧',
+  })
+  catAnimFramesWalkHorizontal: SpriteFrame[] = [];
+
+  @property({
+    type: [SpriteFrame],
+    tooltip: '猫纵向移动：`assets/images/cat/walk2` 各帧',
+  })
+  catAnimFramesWalkVertical: SpriteFrame[] = [];
+
+  @property({
+    type: [SpriteFrame],
+    tooltip: '猫眩晕：`assets/images/cat/xuanyun` 各帧',
+  })
+  catAnimFramesStun: SpriteFrame[] = [];
+
+  @property({
+    tooltip: '猫动画帧间隔（秒），与拆帧 delay 一致时可用 0.2',
+  })
+  catAnimFrameSec = 0.2;
 
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;
@@ -356,6 +386,7 @@ export class GameController extends Component {
   private joyKnob!: Node;
 
   private gameRunning = false;
+  private levelStartedForCatAnim = false;
   private endModalShown = false;
   private intent: MoveIntent = { x: 0, y: 0 };
   private readonly keys = new Set<KeyCode>();
@@ -629,6 +660,13 @@ export class GameController extends Component {
       floor: this.mapTileScaleFloor,
       edge: this.mapTileScaleEdge,
       stone: this.mapTileScaleStone,
+    });
+    this.boardView.configureCatFrameAnimations({
+      framesStart: this.catAnimFramesStart,
+      framesWalkHorizontal: this.catAnimFramesWalkHorizontal,
+      framesWalkVertical: this.catAnimFramesWalkVertical,
+      framesStun: this.catAnimFramesStun,
+      frameDurationSec: this.catAnimFrameSec,
     });
 
     centerCol.removeFromParent();
@@ -1243,6 +1281,7 @@ export class GameController extends Component {
     silent: boolean,
   ): void {
     this.sim.resetLevel(level, mapLines, { playLevelStartSfx: !silent });
+    this.levelStartedForCatAnim = false;
     this.pendingLevelStartSfx = silent;
     this.refreshHudDiskBest();
     this.syncCountdownAfterLevel();
@@ -1367,6 +1406,7 @@ export class GameController extends Component {
     const willRun = !this.gameRunning;
     this.gameRunning = willRun;
     if (willRun) {
+      this.levelStartedForCatAnim = true;
       if (this.pendingLevelStartSfx) {
         this.gameAudio.playLevelStart();
         this.pendingLevelStartSfx = false;
@@ -1432,6 +1472,7 @@ export class GameController extends Component {
     this.hideResultModal();
     this.gameRunning = true;
     this.resetLevelWithPolicy(this.sim.level, mapLinesForPlay(), false);
+    this.levelStartedForCatAnim = true;
     this.anim.snapToGrid(this.sim.catX, this.sim.catY);
     this.syncRunBtn();
     this.syncNextLevelUi();
@@ -1639,7 +1680,15 @@ export class GameController extends Component {
       this.syncRunBtn();
     }
 
-    this.boardView.redraw(this.sim, this.anim, this.sim.stunnedRemaining > 0);
+    this.boardView.redraw(
+      this.sim,
+      this.anim,
+      this.sim.stunnedRemaining > 0,
+      this.gameRunning && this.sim.gameEnd === 'none',
+      this.levelStartedForCatAnim &&
+        !this.gameRunning &&
+        this.sim.gameEnd === 'none',
+    );
 
     const st =
       this.sim.stunnedRemaining > 0

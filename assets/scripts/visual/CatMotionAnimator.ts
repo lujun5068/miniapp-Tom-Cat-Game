@@ -242,4 +242,16 @@ export class CatMotionAnimator {
   getActiveMotionKind(): MotionKind | null {
     return this.active?.kind ?? null;
   }
+
+  /**
+   * 仅在 `walk` 时有效：相对格子的行走是否主要为水平方向（否则为纵向）。
+   */
+  getWalkIsHorizontal(): boolean | null {
+    if (this.active?.kind !== 'walk') return null;
+    const { fromX, fromY, toX, toY } = this.active;
+    const adx = Math.abs(toX - fromX);
+    const ady = Math.abs(toY - fromY);
+    if (adx < 1e-6 && ady < 1e-6) return null;
+    return adx >= ady;
+  }
 }
