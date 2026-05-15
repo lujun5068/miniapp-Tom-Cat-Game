@@ -1,4 +1,4 @@
-# 猫抓老鼠 · Cocos 微信小游戏移植 — 进度文档
+# 猫捕鼠冠军Tom · 小游戏设计文档
 
 **引擎版本：** Cocos Creator **3.8.8**  
 **文档更新说明：** 由开发过程整理；后续请在迭代时同步更新「已办 / 待办」。
@@ -66,7 +66,7 @@
 ### 3.1 音频（收尾）
 
 - [x] 导入工程并在 **GameController** 各 `clip*` 上绑定 `AudioClip`（当前资源为 **`.m4a`**，编辑器与浏览器预览通常可直接播放）
-- [ ] **微信真机**：若个别机型无法解码 `.m4a`，请按[微信小游戏音频文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/audio.html)改用 **mp3** 等推荐格式后重新导入绑定
+- [x] **微信真机**：若个别机型无法解码 `.m4a`，请按[微信小游戏音频文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/audio.html)改用 **mp3** 等推荐格式后重新导入绑定
 - [x] 顶栏「音乐·开/关」「音效·开/关」与 `AudioSource` 绑定及状态持久化
 - [x] 关卡开始、倒计时 tick、胜负、操作 hooks、UI 点击等播放逻辑
 
@@ -80,11 +80,11 @@
 
 ### 3.3 微信小游戏发布（发布前必做）
 
-- [ ] **构建发布**：Creator 菜单 **项目 → 构建发布**，发布平台选 **微信小游戏**，配置 **AppID**、首包与分包策略（首包体积见[微信文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/subPackage/useSubPackage.html)）
+- [x] **构建发布**：Creator 菜单 **项目 → 构建发布**，发布平台选 **微信小游戏**，配置 **AppID**、首包与分包策略（首包体积见[微信文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/subPackage/useSubPackage.html)）
 - [x] **存储**：已实现 `assets/scripts/storage/platformKv.ts` — 在 **`cc/env` 的 `WECHAT` 为真** 且存在 `wx` 时使用 **`wx.getStorageSync` / `setStorageSync` / `removeStorageSync`**；关卡存档 `levelSave.ts`、音频设置 `audioSettings.ts` 已改为经此读写（与网页版键名一致）。异步 `wx.setStorage` 若需可再包一层队列（当前同步 API 与原有 try/catch 语义一致）
-- [ ] 音频：与微信**同时播放实例数**、**用户触媒后**再播等策略对齐；**真机验证 `.m4a`**（异常则改 **mp3** 等再绑定，见 3.1）
-- [ ] 在微信开发者工具 **详情 → 本地设置** 或 **game.json** 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归
-- [ ] **隐私与用户数据**：按[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)配置用户隐私保护指引、必要接口声明等
+- [x] 音频：与微信**同时播放实例数**、**用户触媒后**再播等策略对齐；**真机验证 `.m4a`**（异常则改 **mp3** 等再绑定，见 3.1）
+- [x] 在微信开发者工具 **详情 → 本地设置** 或 **game.json** 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归
+- [x] **隐私与用户数据**：按[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)配置用户隐私保护指引、必要接口声明等
 
 **3.3 自检（发布前打勾）**
 
@@ -97,15 +97,15 @@
 
 ### 3.4 工程与协作（中优先级）
 
-- [ ] 将「挂载 GameController 的场景」纳入版本管理并设为启动场景（若尚未保存场景文件）
-- [ ] 资源目录规范：`textures/`、`audio/`、`prefabs/` 等
-- [ ] 需要时在 `docs/` 补充「场景节点树 / Prefab 说明」
+- [x] 将「挂载 GameController 的场景」纳入版本管理并设为启动场景（若尚未保存场景文件）
+- [x] 资源目录规范：`textures/`、`audio/`、`prefabs/` 等
+- [x] 需要时在 `docs/` 补充「场景节点树 / Prefab 说明」
 
 ### 3.5 可选优化（低优先级）
 
-- [ ] 强横屏与分辨率策略与网页版 `style.css` 强横屏方案对齐
-- [ ] 性能：老鼠数量上限、对象池（若上 Spine/大量粒子再评估）
-- [ ] 国际化（若不需要可忽略）
+- [x] 强横屏与分辨率策略与网页版 `style.css` 强横屏方案对齐
+- [x] 性能：老鼠数量上限、对象池（若上 Spine/大量粒子再评估）
+- [x] 国际化（若不需要可忽略）
 
 ---
 
