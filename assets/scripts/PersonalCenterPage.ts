@@ -459,7 +459,7 @@ export class PersonalCenterPage extends Component {
     for (let i = 0; i < catSkins.length; i++) {
       const skin = catSkins[i];
       const skinId = skin.id;
-      const isUnlocked = unlockedSkins.indexOf(skinId) >= 0;
+      const isUnlocked = skin.isDefault || unlockedSkins.indexOf(skinId) >= 0;
       const isCurrent = skinId === currentSkin;
       const col = i % columns;
       const row = Math.floor(i / columns);
@@ -586,6 +586,10 @@ export class PersonalCenterPage extends Component {
     if (state.actionBtn) {
       state.actionBtn.destroy();
       state.actionBtn = null;
+    }
+
+    if (skin.isDefault) {
+      return;
     }
 
     if (!isUnlocked && skin.price <= score) {
