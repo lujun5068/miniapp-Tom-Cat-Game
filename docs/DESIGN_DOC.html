@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>猫捕鼠冠军Tom软件 设计文档</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #1f2328;
+      --muted: #57606a;
+      --border: #d0d7de;
+      --accent: #0969da;
+      --surface: #f6f8fa;
+    }
+
+    body {
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      margin: 0;
+      background: #ffffff;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 40px 28px 56px;
+    }
+
+    h1 {
+      border-bottom: 1px solid var(--border);
+      font-size: 2em;
+      padding-bottom: 0.35em;
+    }
+
+    h2 {
+      border-bottom: 1px solid var(--border);
+      margin-top: 2em;
+      padding-bottom: 0.25em;
+    }
+
+    h3, h4 {
+      margin-top: 1.6em;
+    }
+
+    ul, ol {
+      padding-left: 1.8em;
+    }
+
+    code {
+      background: rgba(175, 184, 193, 0.2);
+      border-radius: 4px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92em;
+      padding: 0.15em 0.35em;
+    }
+
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    pre code {
+      background: transparent;
+      border-radius: 0;
+      display: block;
+      padding: 0;
+      white-space: pre;
+    }
+
+    hr {
+      border: 0;
+      border-top: 1px solid var(--border);
+      margin: 32px 0;
+    }
+
+    strong {
+      font-weight: 700;
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 18mm 14mm;
+      }
+
+      main {
+        max-width: none;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>猫捕鼠冠军Tom软件 设计文档</h1>
+    <h2>1. 项目概述</h2>
+    <p>猫捕鼠冠军Tom软件 是一个基于 Cocos Creator 的休闲小游戏项目。玩家控制小猫在棋盘地图中移动、跳跃和攻击，在限定时间内抓住关卡中的老鼠。</p>
+    <h3>1.1 核心玩法</h3>
+    <ul>
+    <li>玩家控制小猫在网格地图上移动</li>
+    <li>通过跳跃和攻击等动作捕捉老鼠</li>
+    <li>在限定时间内捕获所有老鼠以通关</li>
+    <li>随着关卡提升，老鼠数量增加，移动速度加快</li>
+    </ul>
+    <h3>1.2 技术栈</h3>
+    <ul>
+    <li>Cocos Creator 3.8.8</li>
+    <li>TypeScript</li>
+    <li>Cocos Creator 组件系统与场景编辑器</li>
+    <li>Cocos 内置音频、精灵、节点、输入与本地存储能力</li>
+    <li>微信小游戏适配存储：微信环境使用 <code>wx.*StorageSync</code>，其他平台使用 <code>sys.localStorage</code></li>
+    </ul>
+    <h2>2. 系统架构</h2>
+    <h3>2.1 项目结构</h3>
+    <pre><code class="language-text">assets/
+  audio/                 音效与背景音乐资源
+  images/                猫、老鼠、地图、UI 等图片资源
+  scene.scene            主场景
+  scripts/
+    GameController.ts    游戏主控制器，负责 UI、输入、关卡流程和音频绑定
+    BoardView.ts         棋盘渲染与角色显示
+    game/                纯游戏逻辑：地图、关卡、移动、攻击、跳跃、老鼠 AI
+    audio/               Cocos 音频封装
+    render/              地图贴图配置
+    storage/             关卡存档与跨端存储
+    ui/                  UI 主题与安全区适配
+    visual/              猫动画播放
+settings/                Cocos Creator 项目设置
+package.json             Cocos Creator 项目信息
+tsconfig.json            TypeScript 配置</code></pre>
+    <h3>2.2 核心模块</h3>
+    <h4>2.2.1 游戏控制模块 (GameController)</h4>
+    <ul>
+    <li>负责游戏流程控制，包括关卡开始、暂停、结束</li>
+    <li>处理用户输入（键盘和触摸）</li>
+    <li>管理 UI 元素和界面布局</li>
+    <li>处理音频播放</li>
+    <li>维护游戏状态和进度</li>
+    </ul>
+    <h4>2.2.2 游戏逻辑模块 (GameSimulation)</h4>
+    <ul>
+    <li>实现游戏核心逻辑，包括：</li>
+    <ul>
+    <li>角色移动、跳跃、攻击</li>
+    <li>老鼠 AI 行为</li>
+    <li>碰撞检测</li>
+    <li>游戏结束条件判断</li>
+    <li>关卡进度管理</li>
+    </ul>
+    </ul>
+    <h4>2.2.3 渲染模块 (BoardView)</h4>
+    <ul>
+    <li>负责游戏场景的渲染</li>
+    <li>处理地图、角色和动画的显示</li>
+    <li>适配不同屏幕尺寸</li>
+    </ul>
+    <h4>2.2.4 存储模块</h4>
+    <ul>
+    <li>管理关卡进度和音频设置的保存</li>
+    <li>适配不同平台的存储机制</li>
+    </ul>
+    <h4>2.2.5 音频模块</h4>
+    <ul>
+    <li>封装 Cocos 音频系统</li>
+    <li>管理背景音乐和音效的播放</li>
+    </ul>
+    <h2>3. 核心功能实现</h2>
+    <h3>3.1 游戏机制</h3>
+    <h4>3.1.1 移动系统</h4>
+    <ul>
+    <li>支持键盘（WASD/方向键）和触摸（虚拟摇杆）控制</li>
+    <li>角色在网格上移动，每次移动一格</li>
+    <li>碰撞检测：无法穿过障碍物</li>
+    </ul>
+    <h4>3.1.2 跳跃系统</h4>
+    <ul>
+    <li>跳跃需要面前一格是障碍物，并且障碍物后一格可行走</li>
+    <li>跳跃失败会导致角色眩晕</li>
+    <li>跳跃成功可以越过障碍物</li>
+    </ul>
+    <h4>3.1.3 攻击系统</h4>
+    <ul>
+    <li>攻击会尝试攻击面前一格</li>
+    <li>若目标格不可行走，角色会进入短暂眩晕</li>
+    <li>攻击成功可以移动到目标格</li>
+    </ul>
+    <h4>3.1.4 老鼠 AI</h4>
+    <ul>
+    <li>老鼠会远离猫的位置</li>
+    <li>随着关卡提升，老鼠移动速度加快</li>
+    <li>老鼠数量随关卡增加</li>
+    </ul>
+    <h4>3.1.5 关卡系统</h4>
+    <ul>
+    <li>每关默认限时 30 秒</li>
+    <li>关卡数量上限为 30 关</li>
+    <li>关卡越高，老鼠数量越多，老鼠移动间隔也会逐步缩短</li>
+    <li>通关条件：在时间结束前抓完所有老鼠</li>
+    </ul>
+    <h3>3.2 界面系统</h3>
+    <h4>3.2.1 主界面</h4>
+    <ul>
+    <li>左侧：音乐/音效控制</li>
+    <li>右侧：开始/暂停、下一关、全部关卡按钮</li>
+    <li>中央：游戏棋盘</li>
+    <li>底部：虚拟摇杆（移动）和动作按钮（跳跃、攻击）</li>
+    </ul>
+    <h4>3.2.2 关卡选择界面</h4>
+    <ul>
+    <li>显示所有关卡，已解锁的关卡可点击进入</li>
+    <li>显示当前关卡进度</li>
+    </ul>
+    <h4>3.2.3 游戏结束界面</h4>
+    <ul>
+    <li>显示游戏结果（胜利/失败）</li>
+    <li>显示剩余时间</li>
+    <li>提供重玩和下一关按钮</li>
+    </ul>
+    <h3>3.3 存储系统</h3>
+    <ul>
+    <li>保存关卡进度和音频设置</li>
+    <li>微信小游戏环境：使用 <code>wx.setStorageSync</code> / <code>wx.getStorageSync</code></li>
+    <li>其他平台：使用 <code>sys.localStorage</code></li>
+    </ul>
+    <h2>4. 技术实现细节</h2>
+    <h3>4.1 游戏循环</h3>
+    <ul>
+    <li>使用 Cocos Creator 的 update 方法实现游戏循环</li>
+    <li>处理游戏逻辑更新、动画更新和渲染</li>
+    </ul>
+    <h3>4.2 碰撞检测</h3>
+    <ul>
+    <li>基于网格的碰撞检测</li>
+    <li>检查角色移动路径上的障碍物</li>
+    </ul>
+    <h3>4.3 动画系统</h3>
+    <ul>
+    <li>使用 Cocos Creator 的精灵帧动画</li>
+    <li>实现猫的不同状态动画（待机、行走、眩晕）</li>
+    </ul>
+    <h3>4.4 音频系统</h3>
+    <ul>
+    <li>封装 Cocos 音频 API</li>
+    <li>支持背景音乐和音效的独立控制</li>
+    </ul>
+    <h3>4.5 跨平台适配</h3>
+    <ul>
+    <li>适配不同屏幕尺寸和分辨率</li>
+    <li>适配不同平台的存储机制</li>
+    <li>适配不同平台的输入方式</li>
+    </ul>
+    <h2>5. 下一步迭代建议</h2>
+    <h3>5.1 游戏内容扩展</h3>
+    <ol>
+    <li><strong>新关卡设计</strong></li>
+    <ul>
+    <li>增加更多关卡，设计不同的地图布局</li>
+    <li>引入特殊地图元素，如传送门、陷阱等</li>
+    <li>设计 boss 关卡，增加游戏挑战性</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>角色系统</strong></li>
+    <ul>
+    <li>增加角色皮肤系统，允许玩家解锁和更换不同的猫皮肤</li>
+    <li>为猫增加技能系统，如加速、范围攻击等</li>
+    <li>增加老鼠种类，不同老鼠有不同的行为模式</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>游戏模式</strong></li>
+    <ul>
+    <li>增加无尽模式，挑战玩家的极限</li>
+    <li>增加时间挑战模式，要求玩家在最短时间内完成关卡</li>
+    <li>增加多人对战模式，玩家之间竞争抓老鼠</li>
+    </ul>
+    </ol>
+    <h3>5.2 技术优化</h3>
+    <ol>
+    <li><strong>性能优化</strong></li>
+    <ul>
+    <li>优化渲染性能，减少 draw call</li>
+    <li>优化动画播放，减少内存使用</li>
+    <li>优化物理碰撞检测，提高游戏运行流畅度</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>代码结构优化</strong></li>
+    <ul>
+    <li>进一步模块化代码，提高代码可维护性</li>
+    <li>增加单元测试，确保代码质量</li>
+    <li>优化资源加载，减少游戏启动时间</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>跨平台适配</strong></li>
+    <ul>
+    <li>优化移动设备触摸控制，提高操作体验</li>
+    <li>适配更多平台，如 iOS、Android、PC 等</li>
+    <li>优化不同屏幕尺寸的适配，确保游戏在各种设备上都有良好的显示效果</li>
+    </ul>
+    </ol>
+    <h3>5.3 用户体验改进</h3>
+    <ol>
+    <li><strong>界面优化</strong></li>
+    <ul>
+    <li>改进 UI 设计，提高视觉效果</li>
+    <li>增加动画过渡效果，提高界面流畅度</li>
+    <li>优化按钮布局，提高操作便捷性</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>音效和音乐</strong></li>
+    <ul>
+    <li>增加更多音效，提高游戏的沉浸感</li>
+    <li>为不同关卡设计不同的背景音乐</li>
+    <li>优化音频系统，提供更好的听觉体验</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>社交功能</strong></li>
+    <ul>
+    <li>增加排行榜系统，玩家可以与好友比较成绩</li>
+    <li>增加成就系统，鼓励玩家完成各种挑战</li>
+    <li>增加分享功能，玩家可以分享自己的游戏成绩</li>
+    </ul>
+    </ol>
+    <h3>5.4 商业化考虑</h3>
+    <ol>
+    <li><strong>广告系统</strong></li>
+    <ul>
+    <li>集成广告系统，通过广告获取收益</li>
+    <li>提供无广告选项，通过内购去除广告</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>内购系统</strong></li>
+    <ul>
+    <li>出售游戏内货币，用于购买皮肤和技能</li>
+    <li>出售关卡解锁权，允许玩家直接解锁高级关卡</li>
+    <li>出售特殊道具，如时间延长、提示等</li>
+    </ul>
+    </ol>
+    <ol>
+    <li><strong>品牌合作</strong></li>
+    <ul>
+    <li>与知名品牌合作，推出联名皮肤和关卡</li>
+    <li>举办限时活动，增加游戏的活跃度</li>
+    </ul>
+    </ol>
+    <h2>6. 结论</h2>
+    <p>猫捕鼠冠军Tom软件 是一个具有潜力的休闲小游戏项目。通过不断优化和扩展，可以打造成为一款受欢迎的游戏产品。建议按照上述迭代建议，逐步完善游戏内容和功能，提高用户体验，实现商业化目标。</p>
+    <hr>
+    <h3>文档版本</h3>
+    <ul>
+    <li>版本：1.0</li>
+    <li>日期：2026-05-15</li>
+    </ul>
+  </main>
+</body>
+</html>
