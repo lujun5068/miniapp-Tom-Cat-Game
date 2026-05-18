@@ -53,6 +53,10 @@ import {
 import { getSafeAreaInsets } from './ui/safeArea';
 import { vibrateLong, vibrateShort } from './storage/wechatVibration';
 import { ScoreManager } from './game/ScoreManager';
+import {
+  PERSONAL_CENTER_BUNDLE,
+  PERSONAL_CENTER_SCENE,
+} from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
 
 const { ccclass, property } = _decorator;
@@ -72,8 +76,6 @@ const SIDE_RAIL_W = 128;
 const CENTER_TOP_MARGIN = 10;
 /** 原操作提示行高度，现作为棋盘挂载区底边距，避免贴底控件与棋盘重叠 */
 const BOARD_AREA_BOTTOM_PAD = 10;
-const PERSONAL_CENTER_SCENE = 'PersonalCenterPage';
-const PERSONAL_CENTER_BUNDLE = 'main';
 
 /** 棋盘右侧关卡 HUD 左缘与棋盘右缘的间距（像素） */
 const HUD_LEVEL_GAP_FROM_BOARD = 20;
@@ -1919,10 +1921,13 @@ export class GameController extends Component {
     const sceneName =
       this.personalCenterSceneName.trim() || PERSONAL_CENTER_SCENE;
     if (!bundleName) {
-      console.warn(
-        '[GameController] personalCenterBundleName is empty; fallback to director.loadScene',
-      );
-      director.loadScene(sceneName);
+      console.error('[GameController] personalCenterBundleName is empty');
+      if (!WECHAT) {
+        console.warn(
+          `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
+        );
+        director.loadScene(sceneName);
+      }
       return;
     }
 
@@ -1949,6 +1954,12 @@ export class GameController extends Component {
             `[GameController] load scene from bundle failed: bundle=${bundleName}, scene=${sceneName}`,
             sceneError,
           );
+          if (!WECHAT) {
+            console.warn(
+              `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
+            );
+            director.loadScene(sceneName);
+          }
           return;
         }
         console.log(

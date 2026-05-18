@@ -7,7 +7,6 @@ import {
   director,
   Graphics,
   Label,
-  Layout,
   Mask,
   Node,
   ScrollView,
@@ -16,20 +15,40 @@ import {
   Widget,
 } from 'cc';
 import { ScoreManager } from './game/ScoreManager';
+import type { ScoreHistoryEntry } from './game/ScoreManager';
+import { MAIN_GAME_SCENE } from './game/sceneRoutes';
 import { catSkins, type CatSkin } from './game/skinConfig';
 import { UiTheme } from './ui/UiTheme';
 
 const { ccclass } = _decorator;
 
-const GAME_SCENE = 'scene-001';
 const PAGE_MAX_WIDTH = 1080;
 const PAGE_H_PAD = 36;
 const HEADER_TOP = 22;
 const SCORE_CARD_TOP = 82;
 const BODY_TOP = 210;
-const BODY_HEIGHT = 390;
-const SKIN_LIST_WIDTH = 640;
-const HISTORY_WIDTH = 340;
+const MIN_CONTENT_WIDTH = 760;
+const SKIN_GRID_COLUMNS = 4;
+const SKIN_CARD_PREVIEW_H = 46;
+const SKIN_CARD_NAME_H = 24;
+const SKIN_CARD_DESC_H = 38;
+const SKIN_CARD_PRICE_H = 22;
+const SKIN_CARD_STATUS_H = 22;
+const SKIN_CARD_BTN_H = 36;
+const SKIN_CARD_V_PAD = 14;
+const SKIN_CARD_SECTION_GAP = 6;
+const SKIN_CARD_HEIGHT =
+  SKIN_CARD_V_PAD * 2 +
+  SKIN_CARD_PREVIEW_H +
+  SKIN_CARD_NAME_H +
+  SKIN_CARD_DESC_H +
+  SKIN_CARD_PRICE_H +
+  SKIN_CARD_STATUS_H +
+  SKIN_CARD_BTN_H +
+  SKIN_CARD_SECTION_GAP * 5;
+const SKIN_CARD_GAP = 16;
+const SKIN_PANEL_HEADER_HEIGHT = 86;
+const SKIN_PANEL_BOTTOM_PAD = 24;
 
 type LabelButtonOpts = {
   fill?: Color;
@@ -37,6 +56,35 @@ type LabelButtonOpts = {
   cornerRadius?: number;
   width?: number;
   height?: number;
+};
+
+type SkinRowState = {
+  node: Node;
+  nameLabel: Label;
+  descLabel: Label;
+  priceLabel: Label;
+  statusLabel: Label;
+  actionBtn: Node | null;
+  bg: Node;
+  bgGraphics: Graphics;
+  preview: Node;
+  previewGraphics: Graphics;
+};
+
+type HistoryRowState = {
+  node: Node;
+  amountLabel: Label;
+  reasonLabel: Label;
+  timeLabel: Label;
+};
+
+type ScrollAreaState = {
+  scrollView: ScrollView;
+  content: Node;
+  viewportHeight: number;
+  track: Node;
+  thumb: Node;
+  thumbGraphics: Graphics;
 };
 
 function solidColor(color: Color, alpha = 255): Color {
@@ -131,25 +179,63 @@ function makeLabelButton(text: string, opts?: LabelButtonOpts): Node {
   return n;
 }
 
+function formatTimeAgo(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 60) {
+    return `${diffMins}分钟前`;
+  } else if (diffHours < 24) {
+    return `${diffHours}小时前`;
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`;
+  } else {
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  }
+}
+
 @ccclass('PersonalCenterPage')
 export class PersonalCenterPage extends Component {
   private readonly scoreManager = ScoreManager.getInstance();
   private bgNode: Node | null = null;
   private contentRoot: Node | null = null;
+  private skinPanel: Node | null = null;
+  private skinContent: Node | null = null;
+  private skinRows: Map<string, SkinRowState> = new Map();
+  private historyScrollView: ScrollView | null = null;
+  private historyContent: Node | null = null;
+  private historyRows: Map<string, HistoryRowState> = new Map();
+  private scrollAreas: ScrollAreaState[] = [];
+  private scoreCard: Node | null = null;
+  private scoreValueLabel: Label | null = null;
+  private scoreDetailBtn: Node | null = null;
+  private statPills: Node[] = [];
+  private confirmPopup: Node | null = null;
+  private historyPopup: Node | null = null;
 
   onLoad(): void {
     console.log('[PersonalCenterPage] onLoad');
     this.node.addComponent(BlockInputEvents);
     this.buildPage();
-    view.on('canvas-resize', this.rebuildPage, this);
+    view.on('canvas-resize', this.layoutScreen, this);
   }
 
   onDestroy(): void {
-    view.off('canvas-resize', this.rebuildPage, this);
+    view.off('canvas-resize', this.layoutScreen, this);
   }
 
-  private rebuildPage(): void {
+  private layoutScreen(): void {
     this.buildPage();
+  }
+
+  lateUpdate(): void {
+    for (const area of this.scrollAreas) {
+      this.updateScrollThumb(area);
+    }
   }
 
   private buildPage(): void {
@@ -161,7 +247,7 @@ export class PersonalCenterPage extends Component {
     this.pinFullScreen(this.bgNode);
     this.paintBackground();
 
-    const contentW = Math.min(PAGE_MAX_WIDTH, Math.max(760, vs.width - PAGE_H_PAD * 2));
+    const contentW = this.calculateContentWidth(vs.width);
     const content = addNode(this.node, 'Content', contentW, vs.height);
     this.contentRoot = content;
     const contentWidget = content.addComponent(Widget);
@@ -172,8 +258,16 @@ export class PersonalCenterPage extends Component {
 
     this.buildHeader(content, contentW);
     this.buildScoreCard(content, contentW);
-    this.buildMainPanels(content, contentW);
+    this.buildSkinPanel(content, contentW);
     this.syncUiLayer(content);
+  }
+
+  private calculateContentWidth(screenWidth: number): number {
+    const availableWidth = screenWidth - PAGE_H_PAD * 2;
+    return Math.min(
+      PAGE_MAX_WIDTH,
+      Math.max(MIN_CONTENT_WIDTH, availableWidth),
+    );
   }
 
   private clearPageChildren(): void {
@@ -185,6 +279,19 @@ export class PersonalCenterPage extends Component {
     }
     this.bgNode = null;
     this.contentRoot = null;
+    this.skinPanel = null;
+    this.skinContent = null;
+    this.skinRows.clear();
+    this.historyScrollView = null;
+    this.historyContent = null;
+    this.historyRows.clear();
+    this.scrollAreas = [];
+    this.scoreCard = null;
+    this.scoreValueLabel = null;
+    this.scoreDetailBtn = null;
+    this.statPills = [];
+    this.confirmPopup = null;
+    this.historyPopup = null;
   }
 
   private buildHeader(parent: Node, contentW: number): void {
@@ -199,7 +306,7 @@ export class PersonalCenterPage extends Component {
     backW.isAlignLeft = true;
     backW.top = HEADER_TOP;
     backW.left = 0;
-    parent.addChild(this.wrapBtn(back, () => director.loadScene(GAME_SCENE)));
+    parent.addChild(this.wrapBtn(back, () => director.loadScene(MAIN_GAME_SCENE)));
 
     const title = this.addAnchoredLabel(
       parent,
@@ -215,67 +322,160 @@ export class PersonalCenterPage extends Component {
   }
 
   private buildScoreCard(parent: Node, contentW: number): void {
+    this.scoreCard = this.addPanel(
+      parent,
+      'ScoreCard',
+      contentW,
+      104,
+      SCORE_CARD_TOP,
+      18,
+    );
+    const title = addLabel(
+      this.scoreCard,
+      'ScoreTitle',
+      '当前积分',
+      20,
+      UiTheme.creamSoft,
+      180,
+      28,
+    );
+    title.horizontalAlign = Label.HorizontalAlign.LEFT;
+    title.node.setPosition(-contentW * 0.5 + 32 + 90, 22, 0);
+
+    this.scoreValueLabel = addLabel(
+      this.scoreCard,
+      'ScoreValue',
+      '0',
+      42,
+      UiTheme.honey,
+      180,
+      48,
+    );
+    this.scoreValueLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    this.scoreValueLabel.node.setPosition(-contentW * 0.5 + 32 + 90, -16, 0);
+
+    this.scoreDetailBtn = makeLabelButton('积分详情', {
+      width: 116,
+      height: 42,
+      fontSize: 17,
+      fill: solidColor(UiTheme.mossBtn2),
+    });
+    this.scoreDetailBtn.setPosition(contentW * 0.5 - 82, -4, 0);
+    this.scoreCard.addChild(
+      this.wrapBtn(this.scoreDetailBtn, () => this.showHistoryPopup()),
+    );
+
+    this.refreshScoreCard();
+  }
+
+  private refreshScoreCard(): void {
+    if (!this.scoreValueLabel || !this.scoreCard) return;
     const availableScore = this.scoreManager.getTotalScore();
     const totalEarned = this.scoreManager.getTotalEarnedScore();
     const unlockedCount = this.scoreManager.getUnlockedSkins().length;
 
-    const card = this.addPanel(parent, 'ScoreCard', contentW, 104, SCORE_CARD_TOP, 18);
-    const title = addLabel(card, 'ScoreTitle', '当前积分', 20, UiTheme.creamSoft, 180, 28);
-    title.horizontalAlign = Label.HorizontalAlign.LEFT;
-    title.node.setPosition(-contentW * 0.5 + 32 + 90, 22, 0);
+    this.scoreValueLabel.string = String(availableScore);
 
-    const score = addLabel(card, 'ScoreValue', String(availableScore), 42, UiTheme.honey, 180, 48);
-    score.horizontalAlign = Label.HorizontalAlign.LEFT;
-    score.node.setPosition(-contentW * 0.5 + 32 + 90, -16, 0);
+    for (const pill of this.statPills) {
+      pill.destroy();
+    }
+    this.statPills = [];
 
-    this.addStatPill(card, `累计获得 ${totalEarned}`, -20);
-    this.addStatPill(card, `已解锁皮肤 ${unlockedCount}/${catSkins.length}`, 220);
+    const pill1 = this.addStatPill(
+      this.scoreCard,
+      `累计获得 ${totalEarned}`,
+      -20,
+    );
+    const pill2 = this.addStatPill(
+      this.scoreCard,
+      `已解锁皮肤 ${unlockedCount}/${catSkins.length}`,
+      220,
+    );
+    this.statPills.push(pill1, pill2);
   }
 
-  private buildMainPanels(parent: Node, contentW: number): void {
-    const gap = 24;
-    const maxSkinW = Math.max(500, contentW - HISTORY_WIDTH - gap);
-    const skinW = Math.min(SKIN_LIST_WIDTH, maxSkinW);
-    const historyW = Math.max(280, contentW - skinW - gap);
-    const leftX = -contentW * 0.5 + skinW * 0.5;
-    const rightX = contentW * 0.5 - historyW * 0.5;
-
-    const skinPanel = this.addPanel(parent, 'SkinPanel', skinW, BODY_HEIGHT, BODY_TOP, 18);
-    skinPanel.setPosition(leftX, skinPanel.position.y, 0);
-    this.buildSkinList(skinPanel, skinW);
-
-    const historyPanel = this.addPanel(parent, 'HistoryPanel', historyW, BODY_HEIGHT, BODY_TOP, 18);
-    historyPanel.setPosition(rightX, historyPanel.position.y, 0);
-    this.buildHistoryList(historyPanel, historyW);
+  private buildSkinPanel(parent: Node, contentW: number): void {
+    const rowCount = Math.ceil(catSkins.length / SKIN_GRID_COLUMNS);
+    const panelH =
+      SKIN_PANEL_HEADER_HEIGHT +
+      rowCount * SKIN_CARD_HEIGHT +
+      Math.max(0, rowCount - 1) * SKIN_CARD_GAP +
+      SKIN_PANEL_BOTTOM_PAD;
+    this.skinPanel = this.addPanel(
+      parent,
+      'SkinPanel',
+      contentW,
+      panelH,
+      BODY_TOP,
+      18,
+    );
+    this.buildSkinList(this.skinPanel, contentW);
   }
 
   private buildSkinList(panel: Node, panelW: number): void {
     this.addSectionTitle(panel, '皮肤商店', '兑换后可在游戏内立即生效');
 
     const viewportW = panelW - 40;
-    const viewportH = BODY_HEIGHT - 94;
-    const { content } = this.addScrollArea(panel, 'SkinScroll', viewportW, viewportH, -28);
-    const rowH = 76;
-    content.getComponent(UITransform)!.setContentSize(
+    const gridH = panel.getComponent(UITransform)!.height - SKIN_PANEL_HEADER_HEIGHT - SKIN_PANEL_BOTTOM_PAD;
+    const content = addNode(
+      panel,
+      'SkinGrid',
       viewportW,
-      Math.max(viewportH, catSkins.length * rowH),
+      gridH,
     );
+    content.getComponent(UITransform)!.setAnchorPoint(0.5, 1);
+    content.setPosition(0, panel.getComponent(UITransform)!.height * 0.5 - SKIN_PANEL_HEADER_HEIGHT, 0);
+    this.skinContent = content;
+    this.skinRows = new Map();
 
+    const rowCount = Math.ceil(catSkins.length / SKIN_GRID_COLUMNS);
+    this.skinContent
+      .getComponent(UITransform)!
+      .setContentSize(
+        viewportW,
+        rowCount * SKIN_CARD_HEIGHT +
+          Math.max(0, rowCount - 1) * SKIN_CARD_GAP,
+      );
+
+    this.refreshSkinList();
+  }
+
+  private refreshSkinList(): void {
+    if (!this.skinContent) return;
     const score = this.scoreManager.getTotalScore();
     const unlockedSkins = this.scoreManager.getUnlockedSkins();
     const currentSkin = this.scoreManager.getCurrentSkin();
+    const viewportW = this.skinContent.getComponent(UITransform)!.width;
+    const columns = SKIN_GRID_COLUMNS;
+    const cardW = Math.floor(
+      (viewportW - SKIN_CARD_GAP * (columns - 1) - 8) / columns,
+    );
+    const cardH = SKIN_CARD_HEIGHT;
+    const rowH = cardH + SKIN_CARD_GAP;
+
+    this.skinContent.removeAllChildren();
+    this.skinRows.clear();
 
     for (let i = 0; i < catSkins.length; i++) {
-      const row = this.createSkinRow(
-        content,
-        catSkins[i],
-        viewportW - 4,
-        rowH - 10,
-        score,
-        unlockedSkins,
-        currentSkin,
+      const skin = catSkins[i];
+      const skinId = skin.id;
+      const isUnlocked = unlockedSkins.indexOf(skinId) >= 0;
+      const isCurrent = skinId === currentSkin;
+      const col = i % columns;
+      const row = Math.floor(i / columns);
+      const x = -viewportW * 0.5 + 4 + cardW * 0.5 + col * (cardW + SKIN_CARD_GAP);
+      const y = -row * rowH - cardH * 0.5;
+
+      const rowState = this.createSkinRow(
+        this.skinContent,
+        skin,
+        cardW,
+        cardH,
       );
-      row.setPosition(0, -i * rowH - rowH * 0.5, 0);
+      this.skinRows.set(skinId, rowState);
+      rowState.node.setPosition(x, y, 0);
+
+      this.refreshSkinRow(rowState, skin, score, isUnlocked, isCurrent);
     }
   }
 
@@ -284,122 +484,491 @@ export class PersonalCenterPage extends Component {
     skin: CatSkin,
     w: number,
     h: number,
-    score: number,
-    unlockedSkins: string[],
-    currentSkin: string,
-  ): Node {
-    const isUnlocked = unlockedSkins.includes(skin.id);
-    const isCurrent = skin.id === currentSkin;
+  ): SkinRowState {
     const row = addNode(parent, `Skin_${skin.id}`, w, h);
     const rowBg = addNode(row, 'Bg', w, h);
+    const rowBgGraphics = rowBg.addComponent(Graphics);
+    const tint = addNode(row, 'TintPreview', 48, 48);
+    const tintGraphics = tint.addComponent(Graphics);
+    const top = h * 0.5 - SKIN_CARD_V_PAD;
+    let cursorY = top - SKIN_CARD_PREVIEW_H * 0.5;
+    tint.setPosition(0, cursorY, 0);
+
+    cursorY -= SKIN_CARD_PREVIEW_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_NAME_H * 0.5;
+    const name = addLabel(row, 'Name', skin.name, 18, UiTheme.cream, w - 18, SKIN_CARD_NAME_H);
+    name.horizontalAlign = Label.HorizontalAlign.CENTER;
+    name.node.setPosition(0, cursorY, 0);
+
+    cursorY -= SKIN_CARD_NAME_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_DESC_H * 0.5;
+    const desc = addLabel(
+      row,
+      'Desc',
+      skin.description,
+      13,
+      UiTheme.creamSoft,
+      w - 18,
+      SKIN_CARD_DESC_H,
+    );
+    desc.horizontalAlign = Label.HorizontalAlign.CENTER;
+    desc.verticalAlign = Label.VerticalAlign.TOP;
+    desc.node.setPosition(0, cursorY, 0);
+
+    cursorY -= SKIN_CARD_DESC_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_PRICE_H * 0.5;
+    const priceLabel = addLabel(
+      row,
+      'Price',
+      '',
+      13,
+      UiTheme.creamSoft,
+      w - 18,
+      SKIN_CARD_PRICE_H,
+    );
+    priceLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+    priceLabel.node.setPosition(0, cursorY, 0);
+
+    cursorY -= SKIN_CARD_PRICE_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_STATUS_H * 0.5;
+    const statusLabel = addLabel(
+      row,
+      'Status',
+      '',
+      14,
+      UiTheme.creamSoft,
+      w - 18,
+      SKIN_CARD_STATUS_H,
+    );
+    statusLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+    statusLabel.node.setPosition(0, cursorY, 0);
+
+    return {
+      node: row,
+      nameLabel: name,
+      descLabel: desc,
+      priceLabel,
+      statusLabel: statusLabel,
+      actionBtn: null,
+      bg: rowBg,
+      bgGraphics: rowBgGraphics,
+      preview: tint,
+      previewGraphics: tintGraphics,
+    };
+  }
+
+  private refreshSkinRow(
+    state: SkinRowState,
+    skin: CatSkin,
+    score: number,
+    isUnlocked: boolean,
+    isCurrent: boolean,
+  ): void {
+    const w = state.bg.getComponent(UITransform)!.width;
+    const h = state.bg.getComponent(UITransform)!.height;
+
+    this.refreshSkinRowBackground(state, isUnlocked, isCurrent);
+    this.refreshSkinPreview(state, skin, isUnlocked, isCurrent);
+    state.nameLabel.string = skin.name;
+    state.descLabel.string = skin.description;
+    state.priceLabel.string = skin.isDefault
+      ? '价格：免费'
+      : `价格：${skin.price} 积分`;
+
+    let statusText: string;
+    let statusColor: Color;
+    if (isUnlocked) {
+      statusText = isCurrent ? '当前使用' : '已解锁';
+      statusColor = isCurrent ? UiTheme.honey : UiTheme.creamSoft;
+    } else {
+      statusText = `${skin.price} 积分`;
+      statusColor = UiTheme.creamSoft;
+    }
+    state.statusLabel.string = statusText;
+    state.statusLabel.color = statusColor;
+
+    if (state.actionBtn) {
+      state.actionBtn.destroy();
+      state.actionBtn = null;
+    }
+
+    if (!isUnlocked && skin.price <= score) {
+      state.actionBtn = this.createActionBtn(
+        state.node,
+        '兑换',
+        UiTheme.modalActionBtnFill,
+        w,
+        -h * 0.5 + SKIN_CARD_V_PAD + SKIN_CARD_BTN_H * 0.5,
+        () => {
+          this.showConfirmUnlock(skin);
+        },
+      );
+    } else if (!isUnlocked && skin.price > score) {
+      state.statusLabel.string = '积分不足';
+      state.statusLabel.color = new Color(255, 145, 130, 255);
+    } else if (isUnlocked && !isCurrent) {
+      state.actionBtn = this.createActionBtn(
+        state.node,
+        '使用',
+        UiTheme.mossBtn2,
+        w,
+        -h * 0.5 + SKIN_CARD_V_PAD + SKIN_CARD_BTN_H * 0.5,
+        () => {
+          if (this.scoreManager.setCurrentSkin(skin.id)) {
+            this.refreshSkinList();
+            this.refreshScoreCard();
+          }
+        },
+      );
+    }
+  }
+
+  private refreshSkinRowBackground(
+    state: SkinRowState,
+    isUnlocked: boolean,
+    isCurrent: boolean,
+  ): void {
+    const w = state.bg.getComponent(UITransform)!.width;
+    const h = state.bg.getComponent(UITransform)!.height;
     paintRoundRect(
-      rowBg.addComponent(Graphics),
+      state.bgGraphics,
       w,
       h,
-      isUnlocked ? solidColor(UiTheme.mossPanel, 210) : new Color(45, 48, 42, 180),
+      isUnlocked
+        ? solidColor(UiTheme.mossPanel, 210)
+        : new Color(45, 48, 42, 180),
       14,
       isCurrent ? { color: UiTheme.honey, width: 2 } : undefined,
     );
-
-    const tint = addNode(row, 'TintPreview', 42, 42);
-    tint.setPosition(-w * 0.5 + 34, 0, 0);
-    const tintG = tint.addComponent(Graphics);
-    tintG.fillColor = new Color(skin.visualTint.r, skin.visualTint.g, skin.visualTint.b, 255);
-    tintG.circle(0, 0, 18);
-    tintG.fill();
-    tintG.lineWidth = 2;
-    tintG.strokeColor = UiTheme.modalBtnStroke;
-    tintG.circle(0, 0, 18);
-    tintG.stroke();
-
-    const name = addLabel(row, 'Name', skin.name, 19, UiTheme.cream, 210, 26);
-    name.horizontalAlign = Label.HorizontalAlign.LEFT;
-    name.node.setPosition(-w * 0.5 + 150, 13, 0);
-
-    const desc = addLabel(row, 'Desc', skin.description, 14, UiTheme.creamSoft, 260, 24);
-    desc.horizontalAlign = Label.HorizontalAlign.LEFT;
-    desc.node.setPosition(-w * 0.5 + 175, -14, 0);
-
-    const status = isUnlocked
-      ? isCurrent
-        ? '当前使用'
-        : '已解锁'
-      : `${skin.price} 积分`;
-    const statusLabel = addLabel(row, 'Status', status, 15, isCurrent ? UiTheme.honey : UiTheme.creamSoft, 110, 28);
-    statusLabel.node.setPosition(w * 0.5 - 158, 0, 0);
-
-    if (!isUnlocked && skin.price <= score) {
-      const btn = makeLabelButton('兑换', {
-        width: 92,
-        height: 40,
-        fontSize: 16,
-        fill: solidColor(UiTheme.modalActionBtnFill),
-      });
-      btn.setPosition(w * 0.5 - 58, 0, 0);
-      row.addChild(
-        this.wrapBtn(btn, () => {
-          if (this.scoreManager.unlockSkin(skin.id)) {
-            this.rebuildPage();
-          }
-        }),
-      );
-    } else if (isUnlocked && !isCurrent) {
-      const btn = makeLabelButton('使用', {
-        width: 92,
-        height: 40,
-        fontSize: 16,
-        fill: solidColor(UiTheme.mossBtn2),
-      });
-      btn.setPosition(w * 0.5 - 58, 0, 0);
-      row.addChild(
-        this.wrapBtn(btn, () => {
-          this.scoreManager.setCurrentSkin(skin.id);
-          this.rebuildPage();
-        }),
-      );
-    }
-
-    return row;
   }
 
-  private buildHistoryList(panel: Node, panelW: number): void {
-    this.addSectionTitle(panel, '积分流水', '最近 50 条记录');
+  private refreshSkinPreview(
+    state: SkinRowState,
+    skin: CatSkin,
+    isUnlocked: boolean,
+    isCurrent: boolean,
+  ): void {
+    const g = state.previewGraphics;
+    g.clear();
 
-    const history = this.scoreManager.getScoreHistory();
+    if (isCurrent) {
+      g.fillColor = new Color(
+        skin.visualTint.r,
+        skin.visualTint.g,
+        skin.visualTint.b,
+        255,
+      );
+      g.circle(0, 0, 21);
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeColor = UiTheme.honey;
+      g.circle(0, 0, 21);
+      g.stroke();
+    } else if (isUnlocked) {
+      g.fillColor = new Color(
+        skin.visualTint.r,
+        skin.visualTint.g,
+        skin.visualTint.b,
+        255,
+      );
+      g.circle(0, 0, 18);
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeColor = UiTheme.modalBtnStroke;
+      g.circle(0, 0, 18);
+      g.stroke();
+    } else {
+      g.fillColor = new Color(
+        skin.visualTint.r,
+        skin.visualTint.g,
+        skin.visualTint.b,
+        128,
+      );
+      g.circle(0, 0, 16);
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeColor = new Color(100, 100, 100, 128);
+      g.circle(0, 0, 16);
+      g.stroke();
+    }
+  }
+
+  private createActionBtn(
+    parent: Node,
+    text: string,
+    fillColor: Color,
+    parentW: number,
+    y: number,
+    cb: () => void,
+  ): Node {
+    const btn = makeLabelButton(text, {
+      width: 92,
+      height: SKIN_CARD_BTN_H,
+      fontSize: 16,
+      fill: solidColor(fillColor),
+    });
+    btn.setPosition(0, y, 0);
+    parent.addChild(this.wrapBtn(btn, cb));
+    return btn;
+  }
+
+  private showConfirmUnlock(skin: CatSkin): void {
+    if (this.confirmPopup) {
+      this.confirmPopup.destroy();
+    }
+
+    const overlay = new Node('ConfirmOverlay');
+    this.confirmPopup = overlay;
+    overlay.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    this.pinFullScreen(overlay);
+    overlay.addComponent(BlockInputEvents);
+    this.node.addChild(overlay);
+
+    const backdrop = addNode(overlay, 'Backdrop', view.getVisibleSize().width, view.getVisibleSize().height);
+    this.pinFullScreen(backdrop);
+    const backdropG = backdrop.addComponent(Graphics);
+    backdropG.fillColor = new Color(0, 0, 0, 170);
+    const vs = view.getVisibleSize();
+    backdropG.rect(-vs.width * 0.5, -vs.height * 0.5, vs.width, vs.height);
+    backdropG.fill();
+
+    const popup = addNode(overlay, 'ConfirmPopup', 400, 200);
+    const w = popup.addComponent(Widget);
+    w.isAlignHorizontalCenter = w.isAlignVerticalCenter = true;
+
+    const bg = addNode(popup, 'Bg', 400, 200);
+    paintRoundRect(
+      bg.addComponent(Graphics),
+      400,
+      200,
+      solidColor(UiTheme.modalPanelBg),
+      16,
+      { color: UiTheme.modalPanelBorder, width: UiTheme.modalPanelBorderWidth },
+    );
+
+    const title = addLabel(
+      popup,
+      'Title',
+      '确认兑换',
+      24,
+      UiTheme.cream,
+      360,
+      40,
+    );
+    title.node.setPosition(0, 60, 0);
+
+    const message = addLabel(
+      popup,
+      'Message',
+      `确定花费 ${skin.price} 积分兑换「${skin.name}」吗？`,
+      18,
+      UiTheme.creamSoft,
+      360,
+      60,
+    );
+    message.node.setPosition(0, 10, 0);
+
+    const btnContainer = addNode(popup, 'BtnContainer', 360, 50);
+    btnContainer.setPosition(0, -60, 0);
+
+    const cancelBtn = makeLabelButton('取消', {
+      width: 120,
+      height: 44,
+      fontSize: 18,
+      fill: solidColor(new Color(100, 100, 100, 200)),
+    });
+    cancelBtn.setPosition(-80, 0, 0);
+    btnContainer.addChild(
+      this.wrapBtn(cancelBtn, () => {
+        overlay.destroy();
+        this.confirmPopup = null;
+      }),
+    );
+
+    const confirmBtn = makeLabelButton('确认', {
+      width: 120,
+      height: 44,
+      fontSize: 18,
+      fill: solidColor(UiTheme.modalActionBtnFill),
+    });
+    confirmBtn.setPosition(80, 0, 0);
+    btnContainer.addChild(
+      this.wrapBtn(confirmBtn, () => {
+        if (this.scoreManager.unlockSkin(skin.id)) {
+          this.refreshSkinList();
+          this.refreshScoreCard();
+        }
+        overlay.destroy();
+        this.confirmPopup = null;
+      }),
+    );
+    this.syncUiLayer(overlay);
+  }
+
+  private showHistoryPopup(): void {
+    if (this.historyPopup) {
+      this.historyPopup.destroy();
+    }
+
+    const overlay = new Node('HistoryOverlay');
+    this.historyPopup = overlay;
+    overlay.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    this.pinFullScreen(overlay);
+    overlay.addComponent(BlockInputEvents);
+    this.node.addChild(overlay);
+
+    const backdrop = addNode(overlay, 'Backdrop', view.getVisibleSize().width, view.getVisibleSize().height);
+    this.pinFullScreen(backdrop);
+    const backdropG = backdrop.addComponent(Graphics);
+    backdropG.fillColor = new Color(0, 0, 0, 170);
+    const vs = view.getVisibleSize();
+    backdropG.rect(-vs.width * 0.5, -vs.height * 0.5, vs.width, vs.height);
+    backdropG.fill();
+
+    const popupW = Math.min(720, Math.max(520, vs.width - 120));
+    const popupH = Math.min(520, Math.max(360, vs.height - 120));
+    const panel = this.addPanel(overlay, 'HistoryPopup', popupW, popupH, 0, 18);
+    const panelWidget = panel.getComponent(Widget)!;
+    panelWidget.isAlignTop = false;
+    panelWidget.isAlignVerticalCenter = true;
+
+    const title = addLabel(panel, 'PopupTitle', '积分流水', 24, UiTheme.cream, 220, 38);
+    title.horizontalAlign = Label.HorizontalAlign.LEFT;
+    title.node.setPosition(-popupW * 0.5 + 130, popupH * 0.5 - 36, 0);
+
+    const closeBtn = makeLabelButton('关闭', {
+      width: 96,
+      height: 40,
+      fontSize: 16,
+      fill: solidColor(UiTheme.modalActionBtnFill),
+    });
+    closeBtn.setPosition(popupW * 0.5 - 68, popupH * 0.5 - 38, 0);
+    panel.addChild(
+      this.wrapBtn(closeBtn, () => {
+        overlay.destroy();
+        this.historyPopup = null;
+      }),
+    );
+
+    this.buildHistoryList(panel, popupW, popupH);
+    this.syncUiLayer(overlay);
+  }
+
+  private buildHistoryList(panel: Node, panelW: number, panelH: number): void {
     const viewportW = panelW - 40;
-    const viewportH = BODY_HEIGHT - 94;
-    const { content } = this.addScrollArea(panel, 'HistoryScroll', viewportW, viewportH, -28);
+    const viewportH = panelH - 94;
+    const scrollResult = this.addScrollArea(
+      panel,
+      'HistoryScroll',
+      viewportW,
+      viewportH,
+      -34,
+    );
+    this.historyContent = scrollResult.content;
+    this.historyScrollView = scrollResult.scrollView;
+    this.historyRows = new Map();
+
+    this.refreshHistoryList();
+  }
+
+  private refreshHistoryList(): void {
+    if (!this.historyContent) return;
+    const history = this.scoreManager.getScoreHistory();
+    const viewportW = this.historyContent.getComponent(UITransform)!.width;
+    const viewportH =
+      this.historyScrollView!.node.getComponent(UITransform)!.height;
+    const rowH = 58;
 
     if (history.length === 0) {
-      content.getComponent(UITransform)!.setContentSize(viewportW, viewportH);
-      const empty = addLabel(content, 'Empty', '暂无积分记录', 18, UiTheme.creamSoft, viewportW, 44);
+      this.historyContent
+        .getComponent(UITransform)!
+        .setContentSize(viewportW, viewportH);
+      const empty = addLabel(
+        this.historyContent,
+        'Empty',
+        '暂无积分记录',
+        18,
+        UiTheme.creamSoft,
+        viewportW,
+        44,
+      );
       empty.node.setPosition(0, -40, 0);
       return;
     }
 
-    const rowH = 58;
-    content.getComponent(UITransform)!.setContentSize(
-      viewportW,
-      Math.max(viewportH, history.length * rowH),
-    );
+    this.historyContent
+      .getComponent(UITransform)!
+      .setContentSize(viewportW, Math.max(viewportH, history.length * rowH));
+
     for (let i = 0; i < history.length; i++) {
       const entry = history[i];
-      const row = addNode(content, `History_${entry.id}`, viewportW - 4, rowH - 8);
-      row.setPosition(0, -i * rowH - rowH * 0.5, 0);
-
-      const rowBg = addNode(row, 'Bg', viewportW - 4, rowH - 8);
-      paintRoundRect(rowBg.addComponent(Graphics), viewportW - 4, rowH - 8, new Color(24, 36, 20, 170), 12);
-
-      const sign = entry.type === 'earn' ? '+' : '-';
-      const amountColor = entry.type === 'earn' ? UiTheme.honey : new Color(255, 145, 130, 255);
-      const amount = addLabel(row, 'Amount', `${sign}${entry.amount}`, 20, amountColor, 86, 34);
-      amount.horizontalAlign = Label.HorizontalAlign.LEFT;
-      amount.node.setPosition(-viewportW * 0.5 + 56, 0, 0);
-
-      const reason = addLabel(row, 'Reason', entry.reason, 15, UiTheme.cream, viewportW - 120, 34);
-      reason.horizontalAlign = Label.HorizontalAlign.LEFT;
-      reason.node.setPosition(58, 0, 0);
+      let rowState = this.historyRows.get(entry.id);
+      if (!rowState) {
+        rowState = this.createHistoryRow(
+          this.historyContent,
+          entry,
+          viewportW - 4,
+          rowH - 8,
+        );
+        this.historyRows.set(entry.id, rowState);
+      }
+      rowState.node.setPosition(0, -i * rowH - rowH * 0.5, 0);
+      this.refreshHistoryRow(rowState, entry);
     }
+  }
+
+  private createHistoryRow(
+    parent: Node,
+    entry: ScoreHistoryEntry,
+    w: number,
+    h: number,
+  ): HistoryRowState {
+    const row = addNode(parent, `History_${entry.id}`, w, h);
+    const rowBg = addNode(row, 'Bg', w, h);
+
+    const amount = addLabel(row, 'Amount', '', 20, UiTheme.honey, 86, 34);
+    amount.horizontalAlign = Label.HorizontalAlign.LEFT;
+    amount.node.setPosition(-w * 0.5 + 56, 0, 0);
+
+    const reason = addLabel(
+      row,
+      'Reason',
+      entry.reason,
+      15,
+      UiTheme.cream,
+      w - 180,
+      34,
+    );
+    reason.horizontalAlign = Label.HorizontalAlign.LEFT;
+    reason.node.setPosition(58, 0, 0);
+
+    const time = addLabel(
+      row,
+      'Time',
+      formatTimeAgo(entry.createdAt),
+      12,
+      UiTheme.creamSoft,
+      80,
+      20,
+    );
+    time.horizontalAlign = Label.HorizontalAlign.RIGHT;
+    time.node.setPosition(w * 0.5 - 40, -15, 0);
+
+    return {
+      node: row,
+      amountLabel: amount,
+      reasonLabel: reason,
+      timeLabel: time,
+    };
+  }
+
+  private refreshHistoryRow(
+    state: HistoryRowState,
+    entry: ScoreHistoryEntry,
+  ): void {
+    const sign = entry.type === 'earn' ? '+' : '-';
+    const amountColor =
+      entry.type === 'earn' ? UiTheme.honey : new Color(255, 145, 130, 255);
+    state.amountLabel.string = `${sign}${entry.amount}`;
+    state.amountLabel.color = amountColor;
+    state.reasonLabel.string = entry.reason;
+    state.timeLabel.string = formatTimeAgo(entry.createdAt);
   }
 
   private addPanel(
@@ -428,14 +997,42 @@ export class PersonalCenterPage extends Component {
     return panel;
   }
 
-  private addSectionTitle(panel: Node, titleText: string, subText: string): void {
-    const title = addLabel(panel, 'SectionTitle', titleText, 22, UiTheme.cream, 220, 34);
+  private addSectionTitle(
+    panel: Node,
+    titleText: string,
+    subText: string,
+  ): void {
+    const title = addLabel(
+      panel,
+      'SectionTitle',
+      titleText,
+      22,
+      UiTheme.cream,
+      220,
+      34,
+    );
     title.horizontalAlign = Label.HorizontalAlign.LEFT;
-    title.node.setPosition(-panel.getComponent(UITransform)!.width * 0.5 + 130, panel.getComponent(UITransform)!.height * 0.5 - 34, 0);
+    title.node.setPosition(
+      -panel.getComponent(UITransform)!.width * 0.5 + 130,
+      panel.getComponent(UITransform)!.height * 0.5 - 34,
+      0,
+    );
 
-    const sub = addLabel(panel, 'SectionSub', subText, 14, UiTheme.creamSoft, 260, 24);
+    const sub = addLabel(
+      panel,
+      'SectionSub',
+      subText,
+      14,
+      UiTheme.creamSoft,
+      260,
+      24,
+    );
     sub.horizontalAlign = Label.HorizontalAlign.LEFT;
-    sub.node.setPosition(-panel.getComponent(UITransform)!.width * 0.5 + 150, panel.getComponent(UITransform)!.height * 0.5 - 62, 0);
+    sub.node.setPosition(
+      -panel.getComponent(UITransform)!.width * 0.5 + 150,
+      panel.getComponent(UITransform)!.height * 0.5 - 62,
+      0,
+    );
   }
 
   private addScrollArea(
@@ -444,22 +1041,16 @@ export class PersonalCenterPage extends Component {
     w: number,
     h: number,
     y: number,
-  ): { root: Node; content: Node } {
+  ): { root: Node; content: Node; scrollView: ScrollView } {
     const root = addNode(parent, name, w, h);
     root.setPosition(0, y, 0);
 
-    const viewNode = addNode(root, 'View', w, h);
+    const viewNode = addNode(root, 'view', w, h);
     viewNode.addComponent(Mask);
 
     const content = addNode(viewNode, 'Content', w, h);
     content.getComponent(UITransform)!.setAnchorPoint(0.5, 1);
     content.setPosition(0, h * 0.5, 0);
-
-    const layout = content.addComponent(Layout);
-    layout.type = Layout.Type.VERTICAL;
-    layout.resizeMode = Layout.ResizeMode.NONE;
-    layout.verticalDirection = Layout.VerticalDirection.TOP_TO_BOTTOM;
-    layout.spacingY = 0;
 
     const scrollView = root.addComponent(ScrollView);
     scrollView.content = content;
@@ -468,21 +1059,96 @@ export class PersonalCenterPage extends Component {
     scrollView.inertia = true;
     scrollView.brake = 0.75;
 
-    const barTrack = addNode(root, 'ScrollBarTrack', 4, h - 12);
-    barTrack.setPosition(w * 0.5 - 8, 0, 0);
-    const trackG = barTrack.addComponent(Graphics);
+    const track = addNode(root, 'ScrollTrack', 4, h - 14);
+    track.setPosition(w * 0.5 - 8, 0, 0);
+    const trackG = track.addComponent(Graphics);
     trackG.fillColor = new Color(UiTheme.cream.r, UiTheme.cream.g, UiTheme.cream.b, 40);
-    trackG.roundRect(-2, -(h - 12) * 0.5, 4, h - 12, 2);
+    trackG.roundRect(-2, -(h - 14) * 0.5, 4, h - 14, 2);
     trackG.fill();
 
-    return { root, content };
+    const thumb = addNode(root, 'ScrollThumb', 6, 36);
+    thumb.setPosition(w * 0.5 - 8, 0, 0);
+    const thumbGraphics = thumb.addComponent(Graphics);
+    const area: ScrollAreaState = {
+      scrollView,
+      content,
+      viewportHeight: h,
+      track,
+      thumb,
+      thumbGraphics,
+    };
+    this.scrollAreas.push(area);
+    this.updateScrollThumb(area);
+
+    return { root, content, scrollView };
   }
 
-  private addStatPill(parent: Node, text: string, x: number): void {
+  private updateScrollAreaSize(
+    scrollView: ScrollView,
+    viewportW: number,
+    viewportH: number,
+  ): void {
+    const area = this.scrollAreas.find((item) => item.scrollView === scrollView);
+    if (!area) return;
+    scrollView.node.getComponent(UITransform)!.setContentSize(viewportW, viewportH);
+    this.getScrollViewNode(scrollView)
+      ?.getComponent(UITransform)!
+      .setContentSize(viewportW, viewportH);
+    area.viewportHeight = viewportH;
+
+    area.track.getComponent(UITransform)!.setContentSize(4, viewportH - 14);
+    area.track.setPosition(viewportW * 0.5 - 8, 0, 0);
+    const trackG = area.track.getComponent(Graphics)!;
+    trackG.clear();
+    trackG.fillColor = new Color(UiTheme.cream.r, UiTheme.cream.g, UiTheme.cream.b, 40);
+    trackG.roundRect(-2, -(viewportH - 14) * 0.5, 4, viewportH - 14, 2);
+    trackG.fill();
+
+    area.thumb.setPosition(viewportW * 0.5 - 8, area.thumb.position.y, 0);
+    this.updateScrollThumb(area);
+  }
+
+  private getScrollViewNode(scrollView: ScrollView): Node | null {
+    return scrollView.view?.node ?? scrollView.node.getChildByName('view');
+  }
+
+  private updateScrollThumb(area: ScrollAreaState): void {
+    const contentH = area.content.getComponent(UITransform)!.height;
+    const viewportH = Math.max(1, area.viewportHeight);
+    const trackH = Math.max(1, viewportH - 14);
+    const overflow = Math.max(0, contentH - viewportH);
+
+    area.thumb.active = overflow > 1;
+    area.track.active = overflow > 1;
+    if (overflow <= 1) return;
+
+    const offset = (area.scrollView as unknown as {
+      getScrollOffset?: () => { x: number; y: number };
+    }).getScrollOffset?.();
+    const progress = Math.max(0, Math.min(1, (offset?.y ?? 0) / overflow));
+    const thumbH = Math.max(28, trackH * (viewportH / contentH));
+    const thumbY = trackH * 0.5 - thumbH * 0.5 - progress * (trackH - thumbH);
+
+    area.thumb.getComponent(UITransform)!.setContentSize(6, thumbH);
+    area.thumb.setPosition(area.thumb.position.x, thumbY, 0);
+    area.thumbGraphics.clear();
+    area.thumbGraphics.fillColor = new Color(UiTheme.honey.r, UiTheme.honey.g, UiTheme.honey.b, 170);
+    area.thumbGraphics.roundRect(-3, -thumbH * 0.5, 6, thumbH, 3);
+    area.thumbGraphics.fill();
+  }
+
+  private addStatPill(parent: Node, text: string, x: number): Node {
     const pill = addNode(parent, `Pill_${text}`, 210, 46);
     pill.setPosition(x, -4, 0);
-    paintRoundRect(pill.addComponent(Graphics), 210, 46, new Color(255, 255, 255, 24), 23);
+    paintRoundRect(
+      pill.addComponent(Graphics),
+      210,
+      46,
+      new Color(255, 255, 255, 24),
+      23,
+    );
     addLabel(pill, 'Text', text, 17, UiTheme.cream, 190, 34);
+    return pill;
   }
 
   private addAnchoredLabel(
@@ -529,16 +1195,27 @@ export class PersonalCenterPage extends Component {
     if (!this.bgNode) return;
     const vs = view.getVisibleSize();
     this.bgNode.getComponent(UITransform)?.setContentSize(vs.width, vs.height);
-    const g = this.bgNode.getComponent(Graphics) ?? this.bgNode.addComponent(Graphics);
+    const g =
+      this.bgNode.getComponent(Graphics) ?? this.bgNode.addComponent(Graphics);
     g.clear();
     g.fillColor = UiTheme.bgFallback;
     g.rect(-vs.width * 0.5, -vs.height * 0.5, vs.width, vs.height);
     g.fill();
 
-    g.fillColor = new Color(UiTheme.mossPanel.r, UiTheme.mossPanel.g, UiTheme.mossPanel.b, 85);
+    g.fillColor = new Color(
+      UiTheme.mossPanel.r,
+      UiTheme.mossPanel.g,
+      UiTheme.mossPanel.b,
+      85,
+    );
     g.circle(-vs.width * 0.36, vs.height * 0.32, 160);
     g.fill();
-    g.fillColor = new Color(UiTheme.honey.r, UiTheme.honey.g, UiTheme.honey.b, 36);
+    g.fillColor = new Color(
+      UiTheme.honey.r,
+      UiTheme.honey.g,
+      UiTheme.honey.b,
+      36,
+    );
     g.circle(vs.width * 0.34, -vs.height * 0.28, 210);
     g.fill();
   }
