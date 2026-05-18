@@ -52,6 +52,7 @@ import {
 } from './ui/UiTheme';
 import { getSafeAreaInsets } from './ui/safeArea';
 import { vibrateLong, vibrateShort } from './storage/wechatVibration';
+import { setupWechatShare } from './storage/wechatShare';
 import { ScoreManager } from './game/ScoreManager';
 import {
   PERSONAL_CENTER_BUNDLE,
@@ -431,6 +432,10 @@ export class GameController extends Component {
   onLoad(): void {
     gameSession.initFromDisk();
     this.scoreManager = ScoreManager.getInstance();
+    setupWechatShare({
+      title: '来帮 Tom 抓住这群狡猾的杰瑞！',
+      query: 'from=game',
+    });
     this.sim = new GameSimulation();
     const s = loadLevelSave();
     const startLv = Math.min(

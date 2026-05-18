@@ -18,6 +18,7 @@ import { ScoreManager } from './game/ScoreManager';
 import type { ScoreHistoryEntry } from './game/ScoreManager';
 import { MAIN_GAME_SCENE } from './game/sceneRoutes';
 import { catSkins, type CatSkin } from './game/skinConfig';
+import { setupWechatShare } from './storage/wechatShare';
 import { UiTheme } from './ui/UiTheme';
 
 const { ccclass } = _decorator;
@@ -225,6 +226,7 @@ export class PersonalCenterPage extends Component {
   onLoad(): void {
     console.log('[PersonalCenterPage] onLoad');
     this.node.addComponent(BlockInputEvents);
+    this.setupShare();
     this.buildPage();
     view.on('canvas-resize', this.layoutScreen, this);
   }
@@ -266,6 +268,15 @@ export class PersonalCenterPage extends Component {
       .setContentSize(contentW, Math.max(vs.height, pageHeight));
     content.setPosition(0, Math.max(vs.height, pageHeight) * 0.5, 0);
     this.syncUiLayer(content);
+  }
+
+  private setupShare(): void {
+    const score = this.scoreManager.getTotalScore();
+    const unlockedCount = this.scoreManager.getUnlockedSkins().length;
+    setupWechatShare({
+      title: `我在 Tom Cat 已有 ${score} 积分，解锁了 ${unlockedCount} 个皮肤！`,
+      query: 'from=personal-center',
+    });
   }
 
   private calculateContentWidth(screenWidth: number): number {
