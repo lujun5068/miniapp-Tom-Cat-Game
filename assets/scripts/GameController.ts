@@ -551,6 +551,12 @@ export class GameController extends Component {
     const sfxN = leftRail.children[1];
     this.sfxTopLabel = sfxN.getComponentInChildren(Label)!;
 
+    leftRail.addChild(
+      this.wrapBtn(makeLabelButton('个人中心', 120, 44), () =>
+        this.openPersonalCenterPage(),
+      ),
+    );
+
     const rightRail = new Node('RightRail');
     const rrUt = rightRail.addComponent(UITransform);
     rrUt.setContentSize(SIDE_RAIL_W, view.getVisibleSize().height);
@@ -588,12 +594,6 @@ export class GameController extends Component {
     rightRail.addChild(
       this.wrapBtn(makeLabelButton('全部关卡', 120, 44), () =>
         this.openLevelsModal(),
-      ),
-    );
-
-    rightRail.addChild(
-      this.wrapBtn(makeLabelButton('个人中心', 120, 44), () =>
-        this.openPersonalCenterPage(),
       ),
     );
 
