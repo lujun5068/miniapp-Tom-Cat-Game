@@ -6,10 +6,12 @@
 import {
   _decorator,
   AudioClip,
+  assetManager,
   BlockInputEvents,
   Button,
   Color,
   Component,
+  director,
   EventKeyboard,
   EventTouch,
   Graphics,
@@ -26,6 +28,7 @@ import {
   input,
   view,
 } from 'cc';
+import { WECHAT } from 'cc/env';
 import { CocosGameAudio } from './audio/CocosGameAudio';
 import { BoardView } from './BoardView';
 import { BASE_TILE_PX } from './GameConstants';
@@ -49,6 +52,8 @@ import {
 } from './ui/UiTheme';
 import { getSafeAreaInsets } from './ui/safeArea';
 import { vibrateLong, vibrateShort } from './storage/wechatVibration';
+import { ScoreManager } from './game/ScoreManager';
+import { getCatSkinById } from './game/skinConfig';
 
 const { ccclass, property } = _decorator;
 
@@ -67,6 +72,8 @@ const SIDE_RAIL_W = 128;
 const CENTER_TOP_MARGIN = 10;
 /** 原操作提示行高度，现作为棋盘挂载区底边距，避免贴底控件与棋盘重叠 */
 const BOARD_AREA_BOTTOM_PAD = 10;
+const PERSONAL_CENTER_SCENE = 'PersonalCenterPage';
+const PERSONAL_CENTER_BUNDLE = 'main';
 
 /** 棋盘右侧关卡 HUD 左缘与棋盘右缘的间距（像素） */
 const HUD_LEVEL_GAP_FROM_BOARD = 20;
@@ -291,7 +298,10 @@ export class GameController extends Component {
   @property({ type: SpriteFrame, tooltip: '内障碍石纹 2（可空）' })
   sfMapStone2: SpriteFrame | null = null;
 
-  @property({ type: SpriteFrame, tooltip: '猫单帧（可空则圆点；有动画帧组时作回退）' })
+  @property({
+    type: SpriteFrame,
+    tooltip: '猫单帧（可空则圆点；有动画帧组时作回退）',
+  })
   sfCat: SpriteFrame | null = null;
 
   @property({
@@ -357,6 +367,17 @@ export class GameController extends Component {
   })
   mapTileScaleStone = 1;
 
+  @property({
+    tooltip:
+      '个人中心所在 Bundle/分包名；需与 Cocos 构建发布里的 Bundle 名一致',
+  })
+  personalCenterBundleName = PERSONAL_CENTER_BUNDLE;
+
+  @property({
+    tooltip: '个人中心场景名，不带 .scene 后缀',
+  })
+  personalCenterSceneName = PERSONAL_CENTER_SCENE;
+
   private gameAudio!: CocosGameAudio;
   private anim!: CatMotionAnimator;
   private boardView!: BoardView;
@@ -413,9 +434,12 @@ export class GameController extends Component {
   private prevWantBgm = false;
 
   private sim!: GameSimulation;
+  private scoreManager!: ScoreManager;
+  private loginRewardPopupRoot: Node | null = null;
 
   onLoad(): void {
     gameSession.initFromDisk();
+    this.scoreManager = ScoreManager.getInstance();
     this.sim = new GameSimulation();
     const s = loadLevelSave();
     const startLv = Math.min(
@@ -467,10 +491,17 @@ export class GameController extends Component {
     view.on('canvas-resize', this.layoutScreen, this);
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+
+    // 显示每日登录奖励弹窗
+    if (this.scoreManager.shouldShowLoginPopup()) {
+      this.showLoginRewardPopup();
+    }
   }
 
   onDestroy(): void {
     view.off('canvas-resize', this.layoutScreen, this);
+    this.node.off(Node.EventType.TOUCH_END, this.onFirstUserAudio, this);
+    input.off(Input.EventType.KEY_DOWN, this.onFirstUserAudio, this);
     input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
   }
@@ -566,6 +597,12 @@ export class GameController extends Component {
     rightRail.addChild(
       this.wrapBtn(makeLabelButton('全部关卡', 120, 44), () =>
         this.openLevelsModal(),
+      ),
+    );
+
+    rightRail.addChild(
+      this.wrapBtn(makeLabelButton('个人中心', 120, 44), () =>
+        this.openPersonalCenterPage(),
       ),
     );
 
@@ -675,6 +712,7 @@ export class GameController extends Component {
       framesStun: this.catAnimFramesStun,
       frameDurationSec: this.catAnimFrameSec,
     });
+    this.applyCurrentCatSkin();
 
     centerCol.removeFromParent();
     leftRail.removeFromParent();
@@ -1300,6 +1338,7 @@ export class GameController extends Component {
   }
 
   private onFirstUserAudio(): void {
+    if (!this.gameAudio) return;
     this.gameAudio.unlockFromUserGesture();
   }
 
@@ -1522,15 +1561,16 @@ export class GameController extends Component {
     level: number,
     timeLeft: number,
     isNewPersonalBest: boolean,
+    scoreChangeText: string,
   ): void {
     this.modalRoot.active = true;
     if (kind === 'win') {
       this.modalTitle.string = isNewPersonalBest ? '捕鼠冠军' : '太棒了';
-      this.modalSub.string = `第 ${level} 关通关！剩余时间 ${timeLeft.toFixed(1)} 秒`;
+      this.modalSub.string = `第 ${level} 关通关！剩余时间 ${timeLeft.toFixed(1)} 秒\n${scoreChangeText}`;
       this.modalBtnNext.node.active = level < MAX_LEVELS;
     } else {
       this.modalTitle.string = '别灰心 Tom';
-      this.modalSub.string = '这群杰瑞太狡猾了，再来一次吧';
+      this.modalSub.string = `这群杰瑞太狡猾了，再来一次吧\n${scoreChangeText}`;
       this.modalBtnNext.node.active = false;
     }
     this.layoutEndModalActionRow();
@@ -1655,7 +1695,7 @@ export class GameController extends Component {
       this.anim.enqueue(ev);
       hasMotionEvent = true;
     }
-    
+
     // 只有在有动画事件或游戏进行中时才更新动画
     if (hasMotionEvent || playing) {
       this.anim.update(dt, this.sim.catX, this.sim.catY);
@@ -1680,17 +1720,38 @@ export class GameController extends Component {
         );
         const isNewPersonalBest = this.sim.timeLeft > prevBest;
         gameSession.recordClearedLevel(this.sim.level, this.sim.timeLeft);
+
+        // 发放积分
+        this.scoreManager.addScore(5, '游戏胜利');
+        let scoreDelta = 5;
+        if (isNewPersonalBest) {
+          this.scoreManager.addScore(10, '破关卡记录');
+          scoreDelta += 10;
+        }
+
         this.gameAudio.playWin();
         this.showEndModal(
           'win',
           this.sim.level,
           this.sim.timeLeft,
           isNewPersonalBest,
+          isNewPersonalBest
+            ? `积分 +${scoreDelta}（通关 +5，破纪录 +10）`
+            : '积分 +5',
         );
       } else {
+        // 发放积分
+        this.scoreManager.addScore(2, '游戏失败');
+
         this.gameAudio.playLose();
         vibrateLong();
-        this.showEndModal('lose', this.sim.level, this.sim.timeLeft, false);
+        this.showEndModal(
+          'lose',
+          this.sim.level,
+          this.sim.timeLeft,
+          false,
+          '积分 +2',
+        );
       }
       this.syncRunBtn();
     }
@@ -1716,7 +1777,7 @@ export class GameController extends Component {
     const levelLine2 = bestVal > 0 ? `本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
     const levelLine = levelLine2 ? `${levelLine1}\n${levelLine2}` : levelLine1;
     const timeLine = `剩余 ${Math.max(0, this.sim.timeLeft).toFixed(1)}s${st}${end}`;
-    
+
     if (levelLine !== this.lastLevelHudLine) {
       this.lastLevelHudLine = levelLine;
       this.levelStripLabel.string = levelLine;
@@ -1741,5 +1802,165 @@ export class GameController extends Component {
         this.gameAudio.pauseBgm();
       }
     }
+  }
+
+  private showLoginRewardPopup(): void {
+    if (this.loginRewardPopupRoot) {
+      this.loginRewardPopupRoot.destroy();
+      this.loginRewardPopupRoot = null;
+    }
+    this.gameAudio.playUi();
+
+    const root = new Node('LoginRewardPopupRoot');
+    this.loginRewardPopupRoot = root;
+    root.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    const rootW = root.addComponent(Widget);
+    rootW.isAlignTop =
+      rootW.isAlignBottom =
+      rootW.isAlignLeft =
+      rootW.isAlignRight =
+        true;
+    rootW.top = rootW.bottom = rootW.left = rootW.right = 0;
+    root.addComponent(BlockInputEvents);
+    this.gameRoot.addChild(root);
+
+    const backdrop = new Node('Backdrop');
+    backdrop.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    const bdW = backdrop.addComponent(Widget);
+    bdW.isAlignTop =
+      bdW.isAlignBottom =
+      bdW.isAlignLeft =
+      bdW.isAlignRight =
+        true;
+    bdW.top = bdW.bottom = bdW.left = bdW.right = 0;
+    const bdG = backdrop.addComponent(Graphics);
+    const vs = view.getVisibleSize();
+    paintModalBackdrop(bdG, vs.width, vs.height);
+    root.addChild(backdrop);
+
+    const panel = new Node('LoginRewardPopup');
+    const pUt = panel.addComponent(UITransform);
+    pUt.setContentSize(400, 250);
+    const pW = panel.addComponent(Widget);
+    pW.isAlignHorizontalCenter = true;
+    pW.isAlignVerticalCenter = true;
+    root.addChild(panel);
+
+    const panelBgNode = new Node('PanelBg');
+    panelBgNode.addComponent(UITransform).setContentSize(400, 250);
+    const pbgG = panelBgNode.addComponent(Graphics);
+    pbgG.clear();
+    pbgG.fillColor = new Color(50, 100, 50, 240);
+    pbgG.roundRect(-200, -125, 400, 250, 20);
+    pbgG.fill();
+    panel.addChild(panelBgNode);
+
+    const panelBorderNode = new Node('PanelBorder');
+    panelBorderNode.addComponent(UITransform).setContentSize(400, 250);
+    const pbdG = panelBorderNode.addComponent(Graphics);
+    pbdG.clear();
+    pbdG.lineWidth = 3;
+    pbdG.strokeColor = UiTheme.honey;
+    pbdG.roundRect(-200, -125, 400, 250, 20);
+    pbdG.stroke();
+    panel.addChild(panelBorderNode);
+
+    const title = this.addCenterLabel(
+      panel,
+      'RewardTitle',
+      28,
+      UiTheme.honey,
+      0,
+    );
+    title.string = '每日登录奖励';
+
+    const rewardLabel = this.addCenterLabel(
+      panel,
+      'RewardLabel',
+      28,
+      UiTheme.cream,
+      60,
+    );
+    rewardLabel.string = '+10 积分';
+
+    const close = makeLabelButton('知道了', 140, 56, {
+      fill: new Color(
+        UiTheme.modalActionBtnFill.r,
+        UiTheme.modalActionBtnFill.g,
+        UiTheme.modalActionBtnFill.b,
+        255,
+      ),
+      fontSize: 22,
+    });
+    const cW = close.addComponent(Widget);
+    cW.isAlignBottom = true;
+    cW.isAlignHorizontalCenter = true;
+    cW.bottom = 30;
+    panel.addChild(
+      this.wrapBtn(close, () => {
+        this.scoreManager.markLoginPopupShown();
+        this.loginRewardPopupRoot = null;
+        root.destroy();
+      }),
+    );
+  }
+
+  private openPersonalCenterPage(): void {
+    this.gameAudio.playUi();
+    this.gameRunning = false;
+    this.gameAudio.pauseBgm();
+    this.syncRunBtn();
+    saveProgressToDisk(this.sim);
+    this.loadPersonalCenterFromBundle();
+  }
+
+  private loadPersonalCenterFromBundle(): void {
+    const bundleName = this.personalCenterBundleName.trim();
+    const sceneName =
+      this.personalCenterSceneName.trim() || PERSONAL_CENTER_SCENE;
+    if (!bundleName) {
+      console.warn(
+        '[GameController] personalCenterBundleName is empty; fallback to director.loadScene',
+      );
+      director.loadScene(sceneName);
+      return;
+    }
+
+    console.log(
+      `[GameController] load bundle scene: bundle=${bundleName}, scene=${sceneName}`,
+    );
+    assetManager.loadBundle(bundleName, (bundleError, bundle) => {
+      if (bundleError || !bundle) {
+        console.error(
+          `[GameController] load bundle failed: ${bundleName}`,
+          bundleError,
+        );
+        if (!WECHAT) {
+          console.warn(
+            `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
+          );
+          director.loadScene(sceneName);
+        }
+        return;
+      }
+      bundle.loadScene(sceneName, (sceneError, sceneAsset) => {
+        if (sceneError || !sceneAsset) {
+          console.error(
+            `[GameController] load scene from bundle failed: bundle=${bundleName}, scene=${sceneName}`,
+            sceneError,
+          );
+          return;
+        }
+        console.log(
+          `[GameController] run bundle scene: bundle=${bundleName}, scene=${sceneName}`,
+        );
+        director.runScene(sceneAsset);
+      });
+    });
+  }
+
+  private applyCurrentCatSkin(): void {
+    const skin = getCatSkinById(this.scoreManager.getCurrentSkin());
+    this.boardView?.setCatVisualTint(skin.visualTint);
   }
 }

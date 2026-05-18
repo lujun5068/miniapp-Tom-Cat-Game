@@ -456,6 +456,8 @@
     "mapTileScaleFloor": 1,
     "mapTileScaleEdge": 1,
     "mapTileScaleStone": 1,
+    "personalCenterBundleName": "main",
+    "personalCenterSceneName": "PersonalCenterPage",
     "_id": "12oWcmmI9NR7Ipvu07IPFO"
   },
   {

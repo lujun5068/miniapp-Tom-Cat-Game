@@ -110,6 +110,7 @@ export class BoardView extends Component {
   private catAnim: CatAnimPack | null = null;
   private catAnimTime = 0;
   private catAnimStateKey: CatAnimKey | '' = '';
+  private catTint = new Color(255, 255, 255, 255);
   private mouseFrame: SpriteFrame | null = null;
   /** 纵向移动时贴图；空则与 mouseFrame 共用 */
   private mouseFrameVertical: SpriteFrame | null = null;
@@ -167,6 +168,10 @@ export class BoardView extends Component {
     this.catFrame = cat;
     this.mouseFrame = mouse;
     this.markMapDirty();
+  }
+
+  setCatVisualTint(tint: { r: number; g: number; b: number }): void {
+    this.catTint = new Color(tint.r, tint.g, tint.b, 255);
   }
 
   /**
@@ -518,12 +523,12 @@ export class BoardView extends Component {
       this.catNode.angle = angle;
       this.catSpr.color = softenStunTint
         ? new Color(255, 200, 200, 255)
-        : Color.WHITE;
+        : this.catTint;
     } else {
       this.catSpr.enabled = false;
       this.entityGfx.fillColor = stunned
         ? new Color(200, 120, 120, 255)
-        : new Color(240, 160, 90, 255);
+        : this.catTint;
       this.entityGfx.circle(cat.x, cat.y, catR);
       this.entityGfx.fill();
     }
