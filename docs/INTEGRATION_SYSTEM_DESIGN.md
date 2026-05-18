@@ -25,7 +25,7 @@
 ### 3.1 存储结构
 
 #### 3.1.1 积分存储
-创建新的存储文件 `scoreSave.ts`，使用与现有存储机制相同的跨端键值存储方案。
+积分存储由 `assets/scripts/game/ScoreManager.ts` 管理，底层使用与现有存储机制相同的 `storage/platformKv` 跨端键值存储方案。
 
 ```typescript
 // assets/scripts/game/ScoreManager.ts
@@ -102,129 +102,29 @@ export const catSkins: CatSkin[] = [
 
 > 当前代码已在此基础上升级为 v2 存档，增加本地日期判断、积分流水和旧存档迁移，详见“8. 当前修复记录”。
 
+当前实现要点：
+
+- `ScoreManager` 使用单例，首次初始化时自动加载本地积分存档并检查每日登录奖励。
+- 存储 key 仍为 `cat-game-score-v1`，但数据结构已升级为 `version: 2`，兼容旧 v1 存档迁移。
+- 日期判断使用本地 `YYYY-MM-DD`，避免 UTC 日期导致每日登录奖励在北京时间早上 8 点切换。
+- 积分分为 `availableScore`（可用积分）和 `totalEarnedScore`（累计获得积分）。
+- 最近积分流水保留在 `history` 中，目前最多保存 50 条。
+- 默认皮肤始终视为已解锁；非默认皮肤可兑换、切换，当前阶段使用 `visualTint` 做可见区分。
+
+关键公开方法：
+
 ```typescript
-// assets/scripts/game/ScoreManager.ts
-import { storageGetItem, storageSetItem } from '../storage/platformKv';
-import { catSkins } from './skinConfig';
-
-type ScoreSaveV1 = {
-  version: 1;
-  totalScore: number;
-  lastLoginDate: string;
-  unlockedSkins: string[];
-  currentSkin: string;
-};
-
-const KEY = 'cat-game-score-v1';
-
-const defaultSave = (): ScoreSaveV1 => ({
-  version: 1,
-  totalScore: 0,
-  lastLoginDate: '',
-  unlockedSkins: ['default'],
-  currentSkin: 'default'
-});
-
-export class ScoreManager {
-  private static instance: ScoreManager;
-  private saveData: ScoreSaveV1;
-
-  private constructor() {
-    this.loadFromDisk();
-    this.checkDailyLogin();
-  }
-
-  public static getInstance(): ScoreManager {
-    if (!ScoreManager.instance) {
-      ScoreManager.instance = new ScoreManager();
-    }
-    return ScoreManager.instance;
-  }
-
-  private loadFromDisk(): void {
-    try {
-      const raw = storageGetItem(KEY);
-      if (!raw) {
-        this.saveData = defaultSave();
-        this.saveToDisk();
-        return;
-      }
-      const o = JSON.parse(raw) as Partial<ScoreSaveV1>;
-      if (o.version !== 1) {
-        this.saveData = defaultSave();
-        this.saveToDisk();
-        return;
-      }
-      this.saveData = {
-        version: 1,
-        totalScore: Number(o.totalScore) || 0,
-        lastLoginDate: o.lastLoginDate || '',
-        unlockedSkins: Array.isArray(o.unlockedSkins) ? o.unlockedSkins : ['default'],
-        currentSkin: o.currentSkin || 'default'
-      };
-    } catch {
-      this.saveData = defaultSave();
-      this.saveToDisk();
-    }
-  }
-
-  private saveToDisk(): void {
-    try {
-      storageSetItem(KEY, JSON.stringify(this.saveData));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private checkDailyLogin(): void {
-    const today = new Date().toISOString().split('T')[0];
-    if (this.saveData.lastLoginDate !== today) {
-      this.addScore(10, '每日登录奖励');
-      this.saveData.lastLoginDate = today;
-      this.saveToDisk();
-    }
-  }
-
-  public addScore(amount: number, reason: string): void {
-    this.saveData.totalScore += amount;
-    this.saveToDisk();
-    console.log(`获得 ${amount} 积分: ${reason}`);
-  }
-
-  public getTotalScore(): number {
-    return this.saveData.totalScore;
-  }
-
-  public unlockSkin(skinId: string): boolean {
-    const skin = catSkins.find(s => s.id === skinId);
-    if (!skin || skin.isDefault) return false;
-    
-    if (this.saveData.totalScore >= skin.price && !this.saveData.unlockedSkins.includes(skinId)) {
-      this.saveData.totalScore -= skin.price;
-      this.saveData.unlockedSkins.push(skinId);
-      this.saveToDisk();
-      return true;
-    }
-    return false;
-  }
-
-  public setCurrentSkin(skinId: string): boolean {
-    if (this.saveData.unlockedSkins.includes(skinId)) {
-      this.saveData.currentSkin = skinId;
-      this.saveToDisk();
-      return true;
-    }
-    return false;
-  }
-
-  public getCurrentSkin(): string {
-    return this.saveData.currentSkin;
-  }
-
-  public getUnlockedSkins(): string[] {
-    return [...this.saveData.unlockedSkins];
-  }
-}
+ScoreManager.getInstance();
+scoreManager.addScore(amount, reason);
+scoreManager.getTotalScore();
+scoreManager.getTotalEarnedScore();
+scoreManager.getScoreHistory();
+scoreManager.unlockSkin(skinId);
+scoreManager.setCurrentSkin(skinId);
+scoreManager.getCurrentSkin();
+scoreManager.getUnlockedSkins();
+scoreManager.shouldShowLoginPopup();
+scoreManager.markLoginPopupShown();
 ```
 
 ### 3.3 游戏逻辑集成
@@ -285,28 +185,34 @@ if (this.sim.gameEnd !== 'none' && !this.endModalShown) {
 }
 ```
 
-### 3.4 UI 集成
+### 3.4 UI 与页面集成
 
-#### 3.4.1 添加积分显示
-在游戏界面添加积分显示，在右侧栏添加积分和皮肤按钮。
+#### 3.4.1 主游戏入口
 
-```typescript
-// 在 GameController.ts 的 buildUi 方法中添加
-// 右侧栏添加积分显示和皮肤按钮
-rightRail.addChild(
-  this.wrapBtn(makeLabelButton('积分', 100, 44), () => this.showScorePanel()),
-);
+主游戏界面的左侧栏包含 `音乐`、`音效`、`个人中心` 按钮，其中 `个人中心` 位于音效开关下方。点击后主场景会先保存当前进度，再通过 Bundle/分包加载个人中心场景。
 
-rightRail.addChild(
-  this.wrapBtn(makeLabelButton('皮肤', 100, 44), () => this.showSkinPanel()),
-);
-```
+#### 3.4.2 个人中心页面
 
-#### 3.4.2 积分面板
-创建积分面板，显示当前积分和积分获取历史。
+个人中心已拆为独立场景和脚本：
 
-#### 3.4.3 皮肤面板
-创建皮肤面板，显示可兑换的皮肤和当前已解锁的皮肤。
+- 场景：`assets/PersonalCenterPage.scene`
+- 脚本：`assets/scripts/PersonalCenterPage.ts`
+- 路由常量：`assets/scripts/game/sceneRoutes.ts`
+
+页面结构：
+
+- 顶部导航：标题和返回按钮。
+- 当前积分卡片：展示可用积分、累计获得积分、已解锁皮肤数，并提供 `积分详情` 按钮。
+- 皮肤商店卡片：按可用宽度自适应网格排列，最多 4 列；默认皮肤免费且可切回，非默认皮肤支持兑换和使用。
+- 积分流水弹窗：点击 `积分详情` 后打开，使用遮罩和滚动列表展示最近积分变化。
+
+#### 3.4.3 微信分享
+
+主游戏界面和个人中心页面均通过 `storage/wechatShare.ts` 注册微信分享能力：
+
+- 主游戏分享文案强调捕鼠闯关。
+- 个人中心分享文案包含当前积分与已解锁皮肤数量。
+- 支持 `showShareMenu`、`onShareAppMessage`、`onShareTimeline`。
 
 ## 4. 皮肤系统实现
 
@@ -332,13 +238,13 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 
 ## 5. 实现步骤
 
-1. **创建存储文件**：`scoreSave.ts`
+1. **实现积分管理器**：`ScoreManager.ts`
 2. **创建皮肤配置**：`skinConfig.ts`
-3. **实现积分管理器**：`ScoreManager.ts`
-4. **修改 GameController**：集成积分发放逻辑
-5. **添加 UI 元素**：积分显示和皮肤面板
-6. **实现皮肤系统**：资源准备和切换逻辑
-7. **测试验证**：确保积分系统正常工作
+3. **修改 GameController**：集成积分发放、结算文案、每日奖励弹窗、个人中心入口
+4. **创建个人中心页面**：`PersonalCenterPage.scene` 与 `PersonalCenterPage.ts`
+5. **配置场景路由**：`sceneRoutes.ts` 维护主场景、个人中心场景和 Bundle 名
+6. **接入微信能力**：`wechatShare.ts` 负责微信分享菜单
+7. **测试验证**：确保积分、皮肤、分包跳转和分享正常工作
 
 ## 6. 测试用例
 
@@ -383,6 +289,7 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 8. **个人中心页面化**：个人中心不再作为游戏界面上的弹窗打开，而是拆为独立场景 `PersonalCenterPage.scene` 和页面脚本 `PersonalCenterPage.ts`。主游戏场景通过 `assetManager.loadBundle(...).loadScene(...)` 从 Bundle/分包加载个人中心，个人中心点击“返回”后加载主场景 `scene-001`。
 9. **个人中心布局优化**：皮肤商店使用按可用宽度计算的自适应网格，默认最多 4 列；默认皮肤可在非当前状态下重新切回但不展示兑换按钮；主内容增加整体滚动兜底，避免皮肤数量增加时底部被裁切。
 10. **个人中心路由常量化**：主场景、个人中心场景和 Bundle 名统一由 `sceneRoutes.ts` 管理，减少 Inspector 序列化配置过期导致的跳转问题。
+11. **微信分享接入**：主游戏界面和个人中心页面均注册微信分享菜单，分享配置集中在 `storage/wechatShare.ts`，仅在微信小游戏环境生效。
 
 ### 8.3 当前保留限制
 

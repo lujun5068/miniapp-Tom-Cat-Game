@@ -32,6 +32,7 @@
 - [x] `gameSession`：内存态与本局最佳、解锁关合并逻辑
 - [x] `progress.ts`：`getEffectiveMaxUnlockedLevel`、`saveProgressToDisk`、`resetProgressOnDisk`
 - [x] 结算弹窗 **× 关闭**：胜利时写盘并静默重置本关（与网页版 `bindEndModal` 行为一致）
+- [x] `ScoreManager`：积分 v2 本地存档、每日登录奖励、胜负/破纪录奖励、皮肤兑换、当前皮肤和最近积分流水
 
 ### 2.3 表现层
 
@@ -41,15 +42,16 @@
 
 ### 2.4 UI 与流程（运行时动态搭建）
 
-- [x] 顶栏：音乐·开/关、音效·开/关、开始/暂停、下一关、**全部关卡**（已移除「重置进度」入口；`progress.resetProgressOnDisk` 仍保留供将来或调试使用）
+- [x] 侧栏：左侧音乐·开/关、音效·开/关、个人中心；右侧开始/暂停、下一关、**全部关卡**（已移除「重置进度」入口；`progress.resetProgressOnDisk` 仍保留供将来或调试使用）
 - [x] HUD：关卡、剩余时间、本关最佳、眩晕提示
 - [x] 操作提示文案（键盘 + 摇杆 + 按钮）
 - [x] 虚拟摇杆 + **圆形**跳跃 / 攻击按钮
 - [x] 键盘：WASD / 方向键移动，空格跳跃，J 扑击
-- [x] 胜负弹窗：标题/副标题、重玩、下一关、关闭逻辑；**失败时仅重玩且行动条收窄居中**；结算 / 选关弹窗统一 `UiTheme` 高对比遮罩与面板描边（`MODAL_PANEL_*`、`paintModal*`）
+- [x] 胜负弹窗：标题/副标题、积分变化、重玩、下一关、关闭逻辑；**失败时仅重玩且行动条收窄居中**；结算 / 选关弹窗统一 `UiTheme` 高对比遮罩与面板描边（`MODAL_PANEL_*`、`paintModal*`）
 - [x] 选关弹窗：1–30 网格；**面板宽度** `MODAL_LEVELS_PANEL_WIDTH` 与内边距下**动态格宽**防溢出；已解锁 / 未解锁底色与数字色区分（`levelPickLocked*`）
 - [x] `UiTheme` 配色 + 安全区 `Widget` 边距 + 可选全屏 `sfUiBg`（与 3.2 对齐 H5 观感）
 - [x] `GameController` 文件头注释：在 **Canvas** 上挂载本组件即可预览
+- [x] `PersonalCenterPage`：独立个人中心场景，展示积分卡片、皮肤商店和积分流水详情弹窗；皮肤网格按宽度自适应，默认最多 4 列
 
 ### 2.5 音频（`AudioSource` + 本地设置）
 
@@ -85,6 +87,8 @@
 - [x] 音频：与微信**同时播放实例数**、**用户触媒后**再播等策略对齐；**真机验证 `.m4a`**（异常则改 **mp3** 等再绑定，见 3.1）
 - [x] 在微信开发者工具 **详情 → 本地设置** 或 **game.json** 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归
 - [x] **隐私与用户数据**：按[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)配置用户隐私保护指引、必要接口声明等
+- [x] **个人中心分包**：`PersonalCenterPage.scene` 可放入 Bundle/分包，Bundle 名由 `assets/scripts/game/sceneRoutes.ts` 维护
+- [x] **微信分享**：主游戏界面和个人中心页面通过 `storage/wechatShare.ts` 注册右上角分享菜单、会话分享和朋友圈分享
 
 **3.3 自检（发布前打勾）**
 
@@ -94,6 +98,8 @@
 | 存储 | 真机通关 / 改音频开关后杀进程再进，进度与开关应保持 |
 | 音频 | 首次点击后 BGM/SFX 可播；无解码错误日志 |
 | 合规 | 隐私弹窗、敏感 API 声明与审核材料就绪 |
+| 分包 | `PERSONAL_CENTER_BUNDLE` 与构建发布中的 Bundle 名一致 |
+| 分享 | 微信开发者工具和真机中右上角分享菜单可见，分享文案正确 |
 
 ### 3.4 工程与协作（中优先级）
 
@@ -131,3 +137,6 @@
 | 2026-05-14 | UI：移除重置入口；弹窗与按钮描边统一；关卡弹窗宽度与动态格子；老鼠纵向贴图 + 显示缩放；失败结算重玩居中 |
 | 2026-05-14 | **3.3 部分**：`storage/platformKv.ts` + `levelSave` / `audioSettings` 对接微信 `wx` 同步存储；文档补充发布自检表 |
 | 2026-05-14 | 微信小游戏构建：`profiles/v2/packages/wechatgame.json` 中 `orientation` 改为 **landscape**，生成 `game.json` 的 `deviceOrientation` 为横屏 |
+| 2026-05-18 | 积分系统：新增每日登录、胜负/破纪录奖励、皮肤兑换、积分流水和本地 v2 存档 |
+| 2026-05-18 | 个人中心：拆为独立场景 `PersonalCenterPage.scene`，支持 Bundle/分包加载、积分卡片、皮肤商店和积分详情弹窗 |
+| 2026-05-18 | 微信能力：主游戏界面和个人中心页面接入微信分享菜单 |
