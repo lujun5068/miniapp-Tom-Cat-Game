@@ -48,6 +48,7 @@ import {
   UiTheme,
 } from './ui/UiTheme';
 import { getSafeAreaInsets } from './ui/safeArea';
+import { vibrateLong, vibrateShort } from './storage/wechatVibration';
 
 const { ccclass, property } = _decorator;
 
@@ -445,10 +446,16 @@ export class GameController extends Component {
     });
     this.sim.setSoundHooks({
       onLevelStart: () => this.gameAudio.playLevelStart(),
-      onStun: () => this.gameAudio.playStun(),
+      onStun: () => {
+        this.gameAudio.playStun();
+        vibrateLong();
+      },
       onJumpSuccess: () => this.gameAudio.playJump(),
       onAttackSuccess: () => this.gameAudio.playAttack(),
-      onCatch: () => this.gameAudio.playCatch(),
+      onCatch: () => {
+        this.gameAudio.playCatch();
+        vibrateShort();
+      },
     });
     this.prevWantBgm = this.gameRunning && this.sim.gameEnd === 'none';
     this.node.once(Node.EventType.TOUCH_END, this.onFirstUserAudio, this);
@@ -1682,6 +1689,7 @@ export class GameController extends Component {
         );
       } else {
         this.gameAudio.playLose();
+        vibrateLong();
         this.showEndModal('lose', this.sim.level, this.sim.timeLeft, false);
       }
       this.syncRunBtn();
