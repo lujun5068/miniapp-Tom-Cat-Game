@@ -381,13 +381,16 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 6. **数据归一化**：加载存档时会过滤非法皮肤 ID、无效日期、非有限数值，并确保默认皮肤始终可用。
 7. **皮肤可见效果**：在尚未准备多套猫动画资源前，皮肤先通过 `visualTint` 色调影响猫的显示，保证兑换和使用后在棋盘上有可见反馈。
 8. **个人中心页面化**：个人中心不再作为游戏界面上的弹窗打开，而是拆为独立场景 `PersonalCenterPage.scene` 和页面脚本 `PersonalCenterPage.ts`。主游戏场景通过 `assetManager.loadBundle(...).loadScene(...)` 从 Bundle/分包加载个人中心，个人中心点击“返回”后加载主场景 `scene-001`。
+9. **个人中心布局优化**：皮肤商店使用按可用宽度计算的自适应网格，默认最多 4 列；默认皮肤可在非当前状态下重新切回但不展示兑换按钮；主内容增加整体滚动兜底，避免皮肤数量增加时底部被裁切。
+10. **个人中心路由常量化**：主场景、个人中心场景和 Bundle 名统一由 `sceneRoutes.ts` 管理，减少 Inspector 序列化配置过期导致的跳转问题。
 
 ### 8.3 当前保留限制
 
 1. **皮肤资源仍是占位实现**：当前用色调区分皮肤，后续接入 `assets/images/cat/skins/` 多套动画资源后，应由 `BoardView` 按当前皮肤加载对应帧组。
 2. **失败奖励仍可能被刷**：失败 +2 的规则暂未加入最低游玩时长、每日上限或关卡限制。如果积分经济被打穿，应优先加奖励频控。
 3. **积分历史只保留最近记录**：当前只保留最近 50 条流水，用于轻量展示，不作为审计账本。
-4. **微信小游戏分包配置**：个人中心已按 Bundle/分包加载，`GameController` 暴露 `personalCenterBundleName` 与 `personalCenterSceneName` 配置项。构建微信小游戏时需确保 `personalCenterBundleName` 与 Cocos 构建发布里的 Bundle 名一致，且该 Bundle 内包含 `PersonalCenterPage.scene`。
+4. **微信小游戏分包配置**：个人中心已按 Bundle/分包加载，Bundle 名由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。构建微信小游戏时需确保该常量与 Cocos 构建发布里的 Bundle 名一致，且该 Bundle 内包含 `PersonalCenterPage.scene`。
+5. **主场景状态恢复**：个人中心返回主场景时仍通过 `director.loadScene('scene-001')` 重载主场景，当前依赖进入个人中心前写盘恢复进度。若后续需要无缝回到暂停点，需要引入更完整的运行态保存或覆盖式页面方案。
 
 ## 9. 总结
 

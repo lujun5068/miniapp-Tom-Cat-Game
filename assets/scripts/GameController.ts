@@ -369,17 +369,6 @@ export class GameController extends Component {
   })
   mapTileScaleStone = 1;
 
-  @property({
-    tooltip:
-      '个人中心所在 Bundle/分包名；需与 Cocos 构建发布里的 Bundle 名一致',
-  })
-  personalCenterBundleName = PERSONAL_CENTER_BUNDLE;
-
-  @property({
-    tooltip: '个人中心场景名，不带 .scene 后缀',
-  })
-  personalCenterSceneName = PERSONAL_CENTER_SCENE;
-
   private gameAudio!: CocosGameAudio;
   private anim!: CatMotionAnimator;
   private boardView!: BoardView;
@@ -1917,11 +1906,10 @@ export class GameController extends Component {
   }
 
   private loadPersonalCenterFromBundle(): void {
-    const bundleName = this.personalCenterBundleName.trim();
-    const sceneName =
-      this.personalCenterSceneName.trim() || PERSONAL_CENTER_SCENE;
+    const bundleName = PERSONAL_CENTER_BUNDLE;
+    const sceneName = PERSONAL_CENTER_SCENE;
     if (!bundleName) {
-      console.error('[GameController] personalCenterBundleName is empty');
+      console.error('[GameController] personal center bundle name is empty');
       if (!WECHAT) {
         console.warn(
           `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,

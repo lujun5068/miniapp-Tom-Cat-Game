@@ -28,7 +28,8 @@ const HEADER_TOP = 22;
 const SCORE_CARD_TOP = 82;
 const BODY_TOP = 210;
 const MIN_CONTENT_WIDTH = 760;
-const SKIN_GRID_COLUMNS = 4;
+const SKIN_GRID_MAX_COLUMNS = 4;
+const SKIN_GRID_MIN_CARD_W = 172;
 const SKIN_CARD_PREVIEW_H = 46;
 const SKIN_CARD_NAME_H = 24;
 const SKIN_CARD_DESC_H = 38;
@@ -181,9 +182,12 @@ function makeLabelButton(text: string, opts?: LabelButtonOpts): Node {
 
 function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
+  if (!Number.isFinite(date.getTime())) {
+    return '刚刚';
+  }
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+  const diffMins = Math.max(0, Math.floor(diffMs / 60000));
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
@@ -202,6 +206,7 @@ function formatTimeAgo(dateStr: string): string {
 export class PersonalCenterPage extends Component {
   private readonly scoreManager = ScoreManager.getInstance();
   private bgNode: Node | null = null;
+  private mainScrollView: ScrollView | null = null;
   private contentRoot: Node | null = null;
   private skinPanel: Node | null = null;
   private skinContent: Node | null = null;
@@ -248,17 +253,18 @@ export class PersonalCenterPage extends Component {
     this.paintBackground();
 
     const contentW = this.calculateContentWidth(vs.width);
-    const content = addNode(this.node, 'Content', contentW, vs.height);
+    const mainScroll = this.addMainScrollArea(contentW, vs.height);
+    this.mainScrollView = mainScroll.scrollView;
+    const content = mainScroll.content;
     this.contentRoot = content;
-    const contentWidget = content.addComponent(Widget);
-    contentWidget.isAlignTop = true;
-    contentWidget.isAlignBottom = true;
-    contentWidget.isAlignHorizontalCenter = true;
-    contentWidget.top = contentWidget.bottom = 0;
 
     this.buildHeader(content, contentW);
     this.buildScoreCard(content, contentW);
-    this.buildSkinPanel(content, contentW);
+    const pageHeight = this.buildSkinPanel(content, contentW);
+    content
+      .getComponent(UITransform)!
+      .setContentSize(contentW, Math.max(vs.height, pageHeight));
+    content.setPosition(0, Math.max(vs.height, pageHeight) * 0.5, 0);
     this.syncUiLayer(content);
   }
 
@@ -270,6 +276,33 @@ export class PersonalCenterPage extends Component {
     );
   }
 
+  private addMainScrollArea(
+    contentW: number,
+    screenH: number,
+  ): { content: Node; scrollView: ScrollView } {
+    const root = addNode(this.node, 'Content', contentW, screenH);
+    const rootWidget = root.addComponent(Widget);
+    rootWidget.isAlignTop = true;
+    rootWidget.isAlignBottom = true;
+    rootWidget.isAlignHorizontalCenter = true;
+    rootWidget.top = rootWidget.bottom = 0;
+
+    const viewNode = addNode(root, 'view', contentW, screenH);
+    viewNode.addComponent(Mask);
+
+    const content = addNode(viewNode, 'ContentInner', contentW, screenH);
+    content.getComponent(UITransform)!.setAnchorPoint(0.5, 1);
+    content.setPosition(0, screenH * 0.5, 0);
+
+    const scrollView = root.addComponent(ScrollView);
+    scrollView.content = content;
+    scrollView.vertical = true;
+    scrollView.horizontal = false;
+    scrollView.inertia = true;
+    scrollView.brake = 0.75;
+    return { content, scrollView };
+  }
+
   private clearPageChildren(): void {
     for (let i = this.node.children.length - 1; i >= 0; i--) {
       const child = this.node.children[i];
@@ -278,6 +311,7 @@ export class PersonalCenterPage extends Component {
       }
     }
     this.bgNode = null;
+    this.mainScrollView = null;
     this.contentRoot = null;
     this.skinPanel = null;
     this.skinContent = null;
@@ -394,8 +428,9 @@ export class PersonalCenterPage extends Component {
     this.statPills.push(pill1, pill2);
   }
 
-  private buildSkinPanel(parent: Node, contentW: number): void {
-    const rowCount = Math.ceil(catSkins.length / SKIN_GRID_COLUMNS);
+  private buildSkinPanel(parent: Node, contentW: number): number {
+    const columns = this.skinGridColumns(contentW - 40);
+    const rowCount = Math.ceil(catSkins.length / columns);
     const panelH =
       SKIN_PANEL_HEADER_HEIGHT +
       rowCount * SKIN_CARD_HEIGHT +
@@ -410,6 +445,7 @@ export class PersonalCenterPage extends Component {
       18,
     );
     this.buildSkinList(this.skinPanel, contentW);
+    return BODY_TOP + panelH + PAGE_H_PAD;
   }
 
   private buildSkinList(panel: Node, panelW: number): void {
@@ -428,7 +464,8 @@ export class PersonalCenterPage extends Component {
     this.skinContent = content;
     this.skinRows = new Map();
 
-    const rowCount = Math.ceil(catSkins.length / SKIN_GRID_COLUMNS);
+    const columns = this.skinGridColumns(viewportW);
+    const rowCount = Math.ceil(catSkins.length / columns);
     this.skinContent
       .getComponent(UITransform)!
       .setContentSize(
@@ -440,13 +477,20 @@ export class PersonalCenterPage extends Component {
     this.refreshSkinList();
   }
 
+  private skinGridColumns(viewportW: number): number {
+    const possible = Math.floor(
+      (viewportW + SKIN_CARD_GAP) / (SKIN_GRID_MIN_CARD_W + SKIN_CARD_GAP),
+    );
+    return Math.max(1, Math.min(SKIN_GRID_MAX_COLUMNS, possible));
+  }
+
   private refreshSkinList(): void {
     if (!this.skinContent) return;
     const score = this.scoreManager.getTotalScore();
     const unlockedSkins = this.scoreManager.getUnlockedSkins();
     const currentSkin = this.scoreManager.getCurrentSkin();
     const viewportW = this.skinContent.getComponent(UITransform)!.width;
-    const columns = SKIN_GRID_COLUMNS;
+    const columns = this.skinGridColumns(viewportW);
     const cardW = Math.floor(
       (viewportW - SKIN_CARD_GAP * (columns - 1) - 8) / columns,
     );
@@ -588,25 +632,7 @@ export class PersonalCenterPage extends Component {
       state.actionBtn = null;
     }
 
-    if (skin.isDefault) {
-      return;
-    }
-
-    if (!isUnlocked && skin.price <= score) {
-      state.actionBtn = this.createActionBtn(
-        state.node,
-        '兑换',
-        UiTheme.modalActionBtnFill,
-        w,
-        -h * 0.5 + SKIN_CARD_V_PAD + SKIN_CARD_BTN_H * 0.5,
-        () => {
-          this.showConfirmUnlock(skin);
-        },
-      );
-    } else if (!isUnlocked && skin.price > score) {
-      state.statusLabel.string = '积分不足';
-      state.statusLabel.color = new Color(255, 145, 130, 255);
-    } else if (isUnlocked && !isCurrent) {
+    if (isUnlocked && !isCurrent) {
       state.actionBtn = this.createActionBtn(
         state.node,
         '使用',
@@ -620,6 +646,20 @@ export class PersonalCenterPage extends Component {
           }
         },
       );
+    } else if (!isUnlocked && skin.price <= score) {
+      state.actionBtn = this.createActionBtn(
+        state.node,
+        '兑换',
+        UiTheme.modalActionBtnFill,
+        w,
+        -h * 0.5 + SKIN_CARD_V_PAD + SKIN_CARD_BTN_H * 0.5,
+        () => {
+          this.showConfirmUnlock(skin);
+        },
+      );
+    } else if (!isUnlocked && skin.price > score) {
+      state.statusLabel.string = '积分不足';
+      state.statusLabel.color = new Color(255, 145, 130, 255);
     }
   }
 
