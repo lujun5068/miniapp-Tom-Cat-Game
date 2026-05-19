@@ -1,0 +1,38 @@
+{
+  "ver": "1.2.0",
+  "importer": "directory",
+  "imported": true,
+  "uuid": "7b3e1d2c-8f4a-4b9d-a5c6-3e2f1a8b9c0d",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "isBundle": true,
+    "bundleName": "personal-center",
+    "priority": 1,
+    "compressionType": {
+      "wechatgame": "subpackage",
+      "android": "merge_dep",
+      "ios": "merge_dep",
+      "alipay-mini-game": "merge_dep",
+      "baidugame": "merge_dep",
+      "bytedance-mini-game": "merge_dep",
+      "huawei-quick-game": "merge_dep",
+      "link-sure-mini-game": "merge_dep",
+      "oppo-mini-game": "merge_dep",
+      "qq-play": "merge_dep",
+      "qtt-mini-game": "merge_dep",
+      "vivo-mini-game": "merge_dep",
+      "xiaomi-quick-game": "merge_dep",
+      "smart-mini-game": "merge_dep",
+      "migu-mini-game": "merge_dep",
+      "windows": "merge_dep",
+      "mac": "merge_dep",
+      "html5": "merge_dep"
+    },
+    "isRemoteBundle": {
+      "wechatgame": false
+    },
+    "isZip": false,
+    "inlineSpriteFrames": false
+  }
+}

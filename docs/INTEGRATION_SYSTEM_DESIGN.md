@@ -290,13 +290,16 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 9. **个人中心布局优化**：皮肤商店使用按可用宽度计算的自适应网格，默认最多 4 列；默认皮肤可在非当前状态下重新切回但不展示兑换按钮；主内容增加整体滚动兜底，避免皮肤数量增加时底部被裁切。
 10. **个人中心路由常量化**：主场景、个人中心场景和 Bundle 名统一由 `sceneRoutes.ts` 管理，减少 Inspector 序列化配置过期导致的跳转问题。
 11. **微信分享接入**：主游戏界面和个人中心页面均注册微信分享菜单，分享配置集中在 `storage/wechatShare.ts`，仅在微信小游戏环境生效。
+12. **个人中心独立分包**：`PersonalCenterPage.scene` 已移动到 `assets/personal-center/` 目录，并由 `assets/personal-center.meta` 标记为 Bundle，其中 `userData.compressionType.wechatgame = 'subpackage'`。微信小游戏构建时该场景及其依赖会被打成独立 subpackage，从首包剥离，减小首屏下载体积；运行时由 `assetManager.loadBundle('personal-center')` 按需拉取。
+13. **个人中心 overlay 清理**：`PersonalCenterPage.clearPageChildren` 现在销毁 Canvas 下除 `Camera` 外的所有动态子节点，避免画布尺寸变化时 `ConfirmOverlay`/`HistoryOverlay` 节点泄漏；新增 `destroyOverlay` 在销毁 overlay 的同时把其内部的 ScrollArea 引用从 `scrollAreas` 中移除。
+14. **`scrollAreas` 防御**：`lateUpdate` 中遍历 `scrollAreas` 时跳过 `!isValid` 的节点，并周期性 compact 数组，避免历史弹窗关闭后还残留陈旧引用导致访问已销毁组件抛错。
 
 ### 8.3 当前保留限制
 
 1. **皮肤资源仍是占位实现**：当前用色调区分皮肤，后续接入 `assets/images/cat/skins/` 多套动画资源后，应由 `BoardView` 按当前皮肤加载对应帧组。
 2. **失败奖励仍可能被刷**：失败 +2 的规则暂未加入最低游玩时长、每日上限或关卡限制。如果积分经济被打穿，应优先加奖励频控。
 3. **积分历史只保留最近记录**：当前只保留最近 50 条流水，用于轻量展示，不作为审计账本。
-4. **微信小游戏分包配置**：个人中心已按 Bundle/分包加载，Bundle 名由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。构建微信小游戏时需确保该常量与 Cocos 构建发布里的 Bundle 名一致，且该 Bundle 内包含 `PersonalCenterPage.scene`。
+4. **微信小游戏分包配置**：个人中心已通过 `assets/personal-center/` 目录的 Bundle 配置打成 wechatgame subpackage，Bundle 名 `personal-center` 由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。若未来重命名目录或调整 Bundle 名，需同步修改 `assets/personal-center.meta` 中 `userData.bundleName` 和该常量；其他平台默认 `merge_dep`，仅微信走 subpackage。
 5. **主场景状态恢复**：个人中心返回主场景时仍通过 `director.loadScene('scene-001')` 重载主场景，当前依赖进入个人中心前写盘恢复进度。若后续需要无缝回到暂停点，需要引入更完整的运行态保存或覆盖式页面方案。
 
 ## 9. 总结

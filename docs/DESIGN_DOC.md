@@ -26,8 +26,9 @@ assets/
   audio/                 音效与背景音乐资源
   images/                猫、老鼠、地图、UI 等图片资源
   scene-001.scene        当前主游戏场景
-  PersonalCenterPage.scene
-                         个人中心独立场景，可放入 Bundle/分包
+  personal-center/       个人中心子目录，配置为独立 Bundle（wechatgame subpackage）
+    PersonalCenterPage.scene
+                         个人中心独立场景，按需通过 assetManager.loadBundle 拉取
   scripts/
     GameController.ts    游戏主控制器，负责 UI、输入、关卡流程和音频绑定
     PersonalCenterPage.ts

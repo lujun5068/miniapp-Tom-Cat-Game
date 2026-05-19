@@ -240,9 +240,56 @@ export class PersonalCenterPage extends Component {
   }
 
   lateUpdate(): void {
+    if (this.scrollAreas.length === 0) return;
+    let needCompact = false;
     for (const area of this.scrollAreas) {
+      if (!this.isScrollAreaAlive(area)) {
+        needCompact = true;
+        continue;
+      }
       this.updateScrollThumb(area);
     }
+    if (needCompact) {
+      this.scrollAreas = this.scrollAreas.filter((area) =>
+        this.isScrollAreaAlive(area),
+      );
+    }
+  }
+
+  private isScrollAreaAlive(area: ScrollAreaState): boolean {
+    return (
+      !!area.scrollView &&
+      area.scrollView.isValid &&
+      !!area.content &&
+      area.content.isValid &&
+      !!area.track &&
+      area.track.isValid &&
+      !!area.thumb &&
+      area.thumb.isValid
+    );
+  }
+
+  private destroyOverlay(overlay: Node | null): void {
+    if (!overlay) return;
+    if (overlay.isValid) {
+      this.scrollAreas = this.scrollAreas.filter(
+        (area) => !this.isDescendantOf(area.scrollView?.node ?? null, overlay),
+      );
+      overlay.destroy();
+    } else {
+      this.scrollAreas = this.scrollAreas.filter((area) =>
+        this.isScrollAreaAlive(area),
+      );
+    }
+  }
+
+  private isDescendantOf(node: Node | null, ancestor: Node): boolean {
+    let cur: Node | null = node;
+    while (cur) {
+      if (cur === ancestor) return true;
+      cur = cur.parent;
+    }
+    return false;
   }
 
   private buildPage(): void {
@@ -317,9 +364,8 @@ export class PersonalCenterPage extends Component {
   private clearPageChildren(): void {
     for (let i = this.node.children.length - 1; i >= 0; i--) {
       const child = this.node.children[i];
-      if (child.name === 'PageBg' || child.name === 'Content') {
-        child.destroy();
-      }
+      if (child.name === 'Camera') continue;
+      child.destroy();
     }
     this.bgNode = null;
     this.mainScrollView = null;
@@ -764,9 +810,8 @@ export class PersonalCenterPage extends Component {
   }
 
   private showConfirmUnlock(skin: CatSkin): void {
-    if (this.confirmPopup) {
-      this.confirmPopup.destroy();
-    }
+    this.destroyOverlay(this.confirmPopup);
+    this.confirmPopup = null;
 
     const overlay = new Node('ConfirmOverlay');
     this.confirmPopup = overlay;
@@ -831,8 +876,8 @@ export class PersonalCenterPage extends Component {
     cancelBtn.setPosition(-80, 0, 0);
     btnContainer.addChild(
       this.wrapBtn(cancelBtn, () => {
-        overlay.destroy();
-        this.confirmPopup = null;
+        this.destroyOverlay(overlay);
+        if (this.confirmPopup === overlay) this.confirmPopup = null;
       }),
     );
 
@@ -849,17 +894,16 @@ export class PersonalCenterPage extends Component {
           this.refreshSkinList();
           this.refreshScoreCard();
         }
-        overlay.destroy();
-        this.confirmPopup = null;
+        this.destroyOverlay(overlay);
+        if (this.confirmPopup === overlay) this.confirmPopup = null;
       }),
     );
     this.syncUiLayer(overlay);
   }
 
   private showHistoryPopup(): void {
-    if (this.historyPopup) {
-      this.historyPopup.destroy();
-    }
+    this.destroyOverlay(this.historyPopup);
+    this.historyPopup = null;
 
     const overlay = new Node('HistoryOverlay');
     this.historyPopup = overlay;
@@ -896,8 +940,8 @@ export class PersonalCenterPage extends Component {
     closeBtn.setPosition(popupW * 0.5 - 68, popupH * 0.5 - 38, 0);
     panel.addChild(
       this.wrapBtn(closeBtn, () => {
-        overlay.destroy();
-        this.historyPopup = null;
+        this.destroyOverlay(overlay);
+        if (this.historyPopup === overlay) this.historyPopup = null;
       }),
     );
 

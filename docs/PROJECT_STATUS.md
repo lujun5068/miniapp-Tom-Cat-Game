@@ -87,7 +87,7 @@
 - [x] 音频：与微信**同时播放实例数**、**用户触媒后**再播等策略对齐；**真机验证 `.m4a`**（异常则改 **mp3** 等再绑定，见 3.1）
 - [x] 在微信开发者工具 **详情 → 本地设置** 或 **game.json** 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归
 - [x] **隐私与用户数据**：按[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)配置用户隐私保护指引、必要接口声明等
-- [x] **个人中心分包**：`PersonalCenterPage.scene` 可放入 Bundle/分包，Bundle 名由 `assets/scripts/game/sceneRoutes.ts` 维护
+- [x] **个人中心分包**：`PersonalCenterPage.scene` 已迁移到 `assets/personal-center/`，由 `assets/personal-center.meta` 配置为 wechatgame `subpackage`；Bundle 名 `personal-center` 由 `assets/scripts/game/sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护，构建后该场景及其依赖会从首包剥离
 - [x] **微信分享**：主游戏界面和个人中心页面通过 `storage/wechatShare.ts` 注册右上角分享菜单、会话分享和朋友圈分享
 
 **3.3 自检（发布前打勾）**
@@ -140,3 +140,5 @@
 | 2026-05-18 | 积分系统：新增每日登录、胜负/破纪录奖励、皮肤兑换、积分流水和本地 v2 存档 |
 | 2026-05-18 | 个人中心：拆为独立场景 `PersonalCenterPage.scene`，支持 Bundle/分包加载、积分卡片、皮肤商店和积分详情弹窗 |
 | 2026-05-18 | 微信能力：主游戏界面和个人中心页面接入微信分享菜单 |
+| 2026-05-19 | 个人中心分包：场景迁移到 `assets/personal-center/` 并按 wechatgame `subpackage` 打包；`PERSONAL_CENTER_BUNDLE` 改为 `personal-center`；构建 profiles 中 `PersonalCenterPage.scene` 的 URL 同步更新；清掉 `scene.scene` 中残留的 `personalCenter*` 哑序列化字段 |
+| 2026-05-19 | 个人中心稳定性：修复 `clearPageChildren` 仅销毁部分子节点导致的 overlay 节点泄漏；`lateUpdate` 跳过失效 ScrollArea 并周期 compact，避免历史弹窗关闭后访问已销毁组件抛错 |
