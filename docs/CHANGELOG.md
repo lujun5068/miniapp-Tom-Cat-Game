@@ -8,6 +8,10 @@
 
 ## 2026-05-19
 
+### 美术 / 资源
+- 皮肤帧组接入：`default / golden / ninja / pirate` 四套猫帧从临时目录迁移到 `assets/resources/cat-skins/<skinId>/{start,walk1,walk2,xuanyun}/`；新增 `assets/scripts/game/catSkinLoader.ts` 通过 `resources.loadDir` 按当前皮肤运行时加载；`GameController` 移除原 `catAnimFramesStart / WalkHorizontal / WalkVertical / Stun` 四个 Inspector `SpriteFrame[]` 字段，改由 `applyCurrentCatSkin` → `applyCatSkinFrames(skinId)` 异步装配；`BoardView.sortCatSpriteFrames` 兼容 `frame-NN` / `frame_NN` / `startN` 等命名。
+- 旧散帧 `assets/images/cat/{start,walk1,walk2,xuanyun}/` 与 `start1.png` 一并删除（已被新 `default` 皮肤帧组替代）。
+
 ### UI / 体验
 - 抽出 `assets/scripts/ui/widgets.ts`：`makeLabelButton` / `paintRoundRect` / `paintModalBackdrop` / `paintModalPanelBg` / `paintModalPanelBorder` / `addUiNode` / `addUiLabel` / `solidColor` 等原子，`GameController` 与 `PersonalCenterPage` 共用一份，删除两边重复实现。
 - 登录奖励弹窗改用统一 `UiTheme.modalPanelBg / modalPanelBorder + MODAL_PANEL_CORNER_RADIUS`，与结算 / 关卡列表弹窗共用底色 + 描边。

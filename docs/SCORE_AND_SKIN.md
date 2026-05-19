@@ -102,12 +102,30 @@ export interface CatSkin {
 }
 ```
 
-当前 4 个皮肤：`default`（免费，初始可用）/ `golden`（100）/ `ninja`（150）/ `pirate`（200）。在多套美术资源接入前，皮肤通过 `visualTint` 给棋盘上的小猫上色，用作可见反馈。
+当前 4 个皮肤：`default`（免费，初始可用）/ `golden`（100）/ `ninja`（150）/ `pirate`（200）。`visualTint` 仍保留，用于在帧组之外叠加色调（也可作为 fallback 的最低可见反馈）。
 
-### 4.1 切换流程
-- 兑换：在个人中心点击"兑换"调用 `unlockSkin(skinId)`，成功后立刻调用 `setCurrentSkin(skinId)` 切换。
+### 4.1 资源目录约定
+
+```text
+assets/resources/cat-skins/
+└── <skinId>/
+    ├── start/     待机 / 起始帧（至少 1 张）
+    ├── walk1/     水平移动帧
+    ├── walk2/     纵向移动帧
+    └── xuanyun/   眩晕帧
+```
+
+- 位于 Cocos 约定的 `resources/` 内置 Bundle 下，运行时 `resources.loadDir('cat-skins/<skinId>/<action>', SpriteFrame, ...)` 拉取。
+- 文件名兼容 `frame-NN.png` / `frame_NN_delay-0.2s.png` / `startN.png` 等命名（由 `BoardView.sortCatSpriteFrames` 按数字段排序）。
+- 增加新皮肤时只需放图 + 在 `skinConfig.ts` 添加元数据，不需要改 `BoardView` 或 `GameController` 代码。
+
+### 4.2 加载与切换流程
+
+- 加载：`assets/scripts/game/catSkinLoader.ts` 暴露 `loadCatSkinFrames(skinId, fallback='default')`，按 4 个动作目录顺序加载；某动作目录加载失败 / 为空时自动回退到 `default` 同名目录。
+- 应用：`GameController.applyCurrentCatSkin()` 同时设 `visualTint` 与异步触发 `applyCatSkinFrames(skinId)`；后者拿到帧后再次 `BoardView.configureCatFrameAnimations`，并在写入前用 `boardView.isValid` 防御场景切换导致的并发问题。
+- 兑换：在个人中心点击"兑换"调用 `unlockSkin(skinId)`，成功后立刻调用 `setCurrentSkin(skinId)`。
 - 切换：在已解锁的非当前皮肤上点击"使用"，调用 `setCurrentSkin(skinId)`；默认皮肤可重新切回但不展示兑换按钮。
-- 当前皮肤会同步到 `BoardView` 的小猫渲染层（目前仅 tint，后续接入多套帧组的位置在 `BoardView.configureCatFrameAnimations` 中）。
+- 生效时机：玩家从个人中心返回主场景时（`loadMainGameScene()`）主场景会重新 `onLoad` → `applyCurrentCatSkin` → 加载新皮肤帧；当前不支持主场景内热切换（也不必要，PersonalCenterPage 入口本身就是一次性的离开 / 返回）。
 
 ---
 
@@ -162,7 +180,7 @@ setupWechatShare({
 
 ## 7. 当前保留限制
 
-1. **皮肤资源仍是占位实现**：当前通过 `visualTint` 给小猫上色，未接入 `assets/images/cat/skins/` 下的多套动画帧组。
+1. **皮肤帧组体积较精简**：当前 `default / golden / ninja / pirate` 四套都是 `start` 1 帧 + `walk1` 5 帧 + `walk2` 4 帧 + `xuanyun` 2 帧的小动画；如需更连贯的待机 / 眩晕过渡，可往 `assets/resources/cat-skins/<skinId>/{start,xuanyun}/` 内补图，无需改代码。
 2. **失败积分反作弊较简单**：仅按"每日入账次数 ≤ 10"做频控，没有最低游戏时长 / 单局有效输入次数门槛；如出现自动化挂机失败需要再叠加策略。
 3. **积分流水非审计账本**：只保留最近 50 条，超出会被截断；不适合作为对账依据。
 4. **本地存档可被篡改**：积分系统纯客户端实现，未做存档签名 / 服务端校验。后续如果接入排行榜、活动奖励、账号体系或付费内容再考虑加防护。

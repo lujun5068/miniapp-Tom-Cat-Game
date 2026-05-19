@@ -1,7 +1,7 @@
 /**
  * 使用方式：在 Creator 中打开/新建场景 → 选中 Canvas 节点 → 添加组件「GameController」→ 保存场景 → 运行预览。
  * 音频：在 Inspector 中为 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。顶栏音乐/音效开关与关卡存档经 `storage/platformKv` 写入：微信小游戏构建下走 **`wx.setStorageSync`**，其余平台走 **`sys.localStorage`**（键名与网页版一致）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用 **mp3** 等再绑定。
- * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` 为猫单帧回退；`catAnimFramesStart` / `WalkHorizontal`（walk1）/ `WalkVertical`（walk2）/ `Stun`（xuanyun）为猫四态序列帧（可空则仅用 `sfCat`）。`sfMouse` 为老鼠单帧；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
+ * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` 为猫单帧回退（动画加载失败时使用）；猫四态序列帧改为按当前皮肤从 `assets/resources/cat-skins/<skinId>/{start,walk1,walk2,xuanyun}` 运行时加载（由 `ScoreManager.getCurrentSkin()` 决定，PersonalCenterPage 切换皮肤后下次进入主场景生效）；`catAnimFrameSec` 控制帧间隔。`sfMouse` 为老鼠单帧；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
  */
 import {
   _decorator,
@@ -53,6 +53,7 @@ import { setupWechatShare } from './storage/wechatShare';
 import { ScoreManager } from './game/ScoreManager';
 import { loadPersonalCenterScene } from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
+import { loadCatSkinFrames } from './game/catSkinLoader';
 import {
   defaultBtnCornerRadius,
   makeLabelButton,
@@ -188,32 +189,8 @@ export class GameController extends Component {
   sfCat: SpriteFrame | null = null;
 
   @property({
-    type: [SpriteFrame],
     tooltip:
-      '猫起始/待机：`assets/images/cat/start` 下各帧（可不排序，按 frame_序号播放）',
-  })
-  catAnimFramesStart: SpriteFrame[] = [];
-
-  @property({
-    type: [SpriteFrame],
-    tooltip: '猫水平移动：`assets/images/cat/walk1` 各帧',
-  })
-  catAnimFramesWalkHorizontal: SpriteFrame[] = [];
-
-  @property({
-    type: [SpriteFrame],
-    tooltip: '猫纵向移动：`assets/images/cat/walk2` 各帧',
-  })
-  catAnimFramesWalkVertical: SpriteFrame[] = [];
-
-  @property({
-    type: [SpriteFrame],
-    tooltip: '猫眩晕：`assets/images/cat/xuanyun` 各帧',
-  })
-  catAnimFramesStun: SpriteFrame[] = [];
-
-  @property({
-    tooltip: '猫动画帧间隔（秒），与拆帧 delay 一致时可用 0.2',
+      '猫动画帧间隔（秒），与拆帧 delay 一致时可用 0.2；帧数据按当前皮肤运行时从 resources/cat-skins/ 加载',
   })
   catAnimFrameSec = 0.2;
 
@@ -593,11 +570,12 @@ export class GameController extends Component {
       edge: this.mapTileScaleEdge,
       stone: this.mapTileScaleStone,
     });
+    // 帧数据走 resources.loadDir 异步加载，先以空配置占位，避免动画状态机在加载前访问空字段。
     this.boardView.configureCatFrameAnimations({
-      framesStart: this.catAnimFramesStart,
-      framesWalkHorizontal: this.catAnimFramesWalkHorizontal,
-      framesWalkVertical: this.catAnimFramesWalkVertical,
-      framesStun: this.catAnimFramesStun,
+      framesStart: [],
+      framesWalkHorizontal: [],
+      framesWalkVertical: [],
+      framesStun: [],
       frameDurationSec: this.catAnimFrameSec,
     });
     this.applyCurrentCatSkin();
@@ -1812,5 +1790,23 @@ export class GameController extends Component {
   private applyCurrentCatSkin(): void {
     const skin = getCatSkinById(this.scoreManager.getCurrentSkin());
     this.boardView?.setCatVisualTint(skin.visualTint);
+    void this.applyCatSkinFrames(skin.id);
+  }
+
+  /**
+   * 按当前皮肤 ID 异步加载 `resources/cat-skins/<skinId>/...` 下的序列帧并写入 BoardView。
+   * - 加载失败 / 某动作目录缺帧时由 `loadCatSkinFrames` 内部回退到 `default`；
+   * - 加载期间组件可能已被销毁（场景切换），完成后再 `isValid` 一次再写入。
+   */
+  private async applyCatSkinFrames(skinId: string): Promise<void> {
+    const frames = await loadCatSkinFrames(skinId);
+    if (!this.boardView || !this.boardView.isValid) return;
+    this.boardView.configureCatFrameAnimations({
+      framesStart: frames.start,
+      framesWalkHorizontal: frames.walkH,
+      framesWalkVertical: frames.walkV,
+      framesStun: frames.stun,
+      frameDurationSec: this.catAnimFrameSec,
+    });
   }
 }

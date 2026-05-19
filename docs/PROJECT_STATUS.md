@@ -12,11 +12,9 @@
 ### 1.1 游戏内容
 
 #### 已完成
-- 皮肤系统骨架：`game/skinConfig.ts` 定义皮肤元数据，`ScoreManager` 负责解锁 / 切换；当前阶段用 `visualTint` 区分外观。
+- 皮肤系统骨架：`game/skinConfig.ts` 定义皮肤元数据，`ScoreManager` 负责解锁 / 切换。
+- 皮肤美术资源接入：4 套皮肤帧组 `default / golden / ninja / pirate` 已落到 `assets/resources/cat-skins/<skinId>/{start,walk1,walk2,xuanyun}/`，由 `game/catSkinLoader.ts` 通过 `resources.loadDir` 运行时按当前皮肤加载，`GameController.applyCurrentCatSkin` 同时设置 `visualTint` 与异步切换帧组（参考 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4）。
 - 关卡限时 + 难度梯度：每关 30 秒、关卡上限 30 关、老鼠数量与步进随关卡递增（`GameSimulation`）。
-
-#### 进行中
-- 皮肤美术资源接入：`assets/images/cat/skins/` 多套动画帧待补齐，`BoardView` 中按当前皮肤加载对应帧组的分支等资源就位再接（参考 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4）。
 
 #### 待办
 - 新关卡形式：特殊地图元素（传送门 / 陷阱）、Boss 关卡。

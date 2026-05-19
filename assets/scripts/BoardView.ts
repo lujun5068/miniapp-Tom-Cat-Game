@@ -38,12 +38,20 @@ type CatAnimPack = {
 
 const CAT_VERTICAL_ANIM_SCALE = 0.75;
 
-/** 按资源名中的 frame_序号 排序（如从 GIF 拆出的 frame_00_delay-0.2s） */
+/**
+ * 按资源名中的帧序号排序，兼容下面几种命名：
+ * - `frame_00_delay-0.2s` / `frame_00`（旧版 GIF 拆帧）
+ * - `frame-00` / `frame-12`（新皮肤资源）
+ * - `start1` / `xuanyun03` 之类以纯数字结尾的单帧
+ * 找不到任何数字时按 uuid 兜底排序，保证调用方拿到稳定顺序。
+ */
 function sortCatSpriteFrames(frames: SpriteFrame[]): SpriteFrame[] {
   const frameIndex = (sf: SpriteFrame): number => {
     const name = sf.name ?? '';
-    const m = /frame_(\d+)/i.exec(name);
-    return m ? parseInt(m[1], 10) : 0;
+    const m = /frame[-_](\d+)/i.exec(name);
+    if (m) return parseInt(m[1], 10);
+    const t = /(\d+)\s*$/.exec(name);
+    return t ? parseInt(t[1], 10) : 0;
   };
   return [...frames]
     .filter((f) => !!f)
