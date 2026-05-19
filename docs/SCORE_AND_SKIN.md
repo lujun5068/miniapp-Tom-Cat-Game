@@ -118,6 +118,8 @@ assets/resources/cat-skins/
 - 位于 Cocos 约定的 `resources/` 内置 Bundle 下，运行时 `resources.loadDir('cat-skins/<skinId>/<action>', SpriteFrame, ...)` 拉取。
 - 文件名兼容 `frame-NN.png` / `frame_NN_delay-0.2s.png` / `startN.png` 等命名（由 `BoardView.sortCatSpriteFrames` 按数字段排序）。
 - 增加新皮肤时只需放图 + 在 `skinConfig.ts` 添加元数据，不需要改 `BoardView` 或 `GameController` 代码。
+- **资源默认朝向约定（重要）**：`start / walk1 / xuanyun` 单帧请画成 **面朝右**；`walk2` 单帧请画成 **面朝上**。`BoardView` 在向左移动时左右翻转、向下移动时旋转 180°；如果资源朝向不符合约定，游戏内会出现猫头反向 / 行走方向不对的视觉问题（参见 [`CHANGELOG.md`](./CHANGELOG.md) 2026-05-19 "猫朝向修复" 条目）。
+- **棋盘显示尺寸**：猫节点在 `BoardView.drawEntities` 中按 `tileSize` 估算半径再乘以 `CAT_DISPLAY_SCALE`（当前 1.5）。调大此常量会让猫整体更显眼，但会跨越 tile 边界；调小则更贴近 tile。
 
 ### 4.2 加载与切换流程
 

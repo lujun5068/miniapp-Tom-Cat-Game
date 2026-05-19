@@ -784,6 +784,9 @@ export class PersonalCenterPage extends Component {
     });
     btn.setPosition(0, y, 0);
     parent.addChild(this.wrapBtn(btn, cb));
+    // makeLabelButton 内部 `new Node()` 的 layer 默认是 Default，与 PersonalCenterPage Canvas
+    // 所在的 UI_2D layer 可能不一致；显式同步整棵子树，确保按钮被 UI Camera 渲染。
+    this.syncUiLayer(btn);
     return btn;
   }
 

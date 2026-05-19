@@ -37,6 +37,8 @@ type CatAnimPack = {
 };
 
 const CAT_VERTICAL_ANIM_SCALE = 0.75;
+/** 棋盘上猫节点相对默认半径的额外放大系数；调大会让猫整体看起来更显眼 */
+const CAT_DISPLAY_SCALE = 1.5;
 
 /**
  * 按资源名中的帧序号排序，兼容下面几种命名：
@@ -131,7 +133,7 @@ export class BoardView extends Component {
 
   private lastMapToken = '';
   private readonly mousePrevGrid = new Map<number, { x: number; y: number }>();
-  
+
   /** 对象池 */
   private readonly spritePool: Node[] = [];
   private readonly mousePool: Node[] = [];
@@ -439,7 +441,7 @@ export class BoardView extends Component {
       sp.type = Sprite.Type.SIMPLE;
       sp.sizeMode = Sprite.SizeMode.CUSTOM;
     }
-    
+
     n.setPosition(cx, cy, 0);
     const sp = n.getComponent(Sprite)!;
     sp.spriteFrame = frame;
@@ -486,6 +488,8 @@ export class BoardView extends Component {
     t: number,
   ): void {
     const cat = anim.getPixelCenter();
+    // catR 仅作为占位圆点半径与 setContentSize 基准；最终视觉放大通过 setScale 叠加 CAT_DISPLAY_SCALE，
+    // 避免依赖 Sprite.SizeMode.CUSTOM 在不同 trim / 帧切换时机下的尺寸刷新差异。
     const catR = Math.min(t * 0.38, 18);
 
     this.entityGfx.clear();
@@ -506,26 +510,23 @@ export class BoardView extends Component {
       const side = catR * 2.2;
       cut.setContentSize(side, side);
       this.catNode.setPosition(cat.x, cat.y, 0);
-      const flip =
-        catAnimKey === 'start' && !orientStartToFacing
-          ? 1
-          : catAnimKey === 'start'
-            ? sim.facing.dx < 0
-              ? -1
-              : 1
-            : sim.facing.dx > 0
-              ? -1
-              : 1;
-      this.catNode.setScale(flip * catVisualScale, catVisualScale, 1);
-      let angle = sim.facing.dy > 0 ? 180 : 0;
-      if (catAnimKey === 'start') {
-        if (!orientStartToFacing) {
-          angle = 0;
-        } else if (sim.facing.dy < 0) {
-          angle = 90;
-        } else if (sim.facing.dy > 0) {
-          angle = 270;
+      // 资源约定（resources/cat-skins/<skin>/*）：
+      //   - start / walk1 / xuanyun 单帧默认面朝右；
+      //   - walk2 单帧默认面朝上；
+      // 因此向左移动时左右翻转，向下移动时旋转 180°；start 在不允许跟随 facing 时保持原样。
+      const isStart = catAnimKey === 'start';
+      const facingNeutralStart = isStart && !orientStartToFacing;
+      const flip = facingNeutralStart ? 1 : sim.facing.dx < 0 ? -1 : 1;
+      const displayScale = catVisualScale * CAT_DISPLAY_SCALE;
+      this.catNode.setScale(flip * displayScale, displayScale, 1);
+      let angle = 0;
+      if (isStart) {
+        if (orientStartToFacing) {
+          if (sim.facing.dy < 0) angle = 90;
+          else if (sim.facing.dy > 0) angle = 270;
         }
+      } else if (sim.facing.dy > 0) {
+        angle = 180;
       }
       this.catNode.angle = angle;
       this.catSpr.color = softenStunTint
@@ -536,7 +537,7 @@ export class BoardView extends Component {
       this.entityGfx.fillColor = stunned
         ? new Color(200, 120, 120, 255)
         : this.catTint;
-      this.entityGfx.circle(cat.x, cat.y, catR);
+      this.entityGfx.circle(cat.x, cat.y, catR * CAT_DISPLAY_SCALE);
       this.entityGfx.fill();
     }
 

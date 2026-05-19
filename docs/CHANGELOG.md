@@ -9,6 +9,11 @@
 ## 2026-05-19
 
 ### 美术 / 资源
+- 猫朝向修复：BoardView 的 flip / angle 逻辑统一为"资源默认水平朝右、`walk2` 纵向朝上"——`walkH` 改为 `dx<0` 时左右翻转（原来 `dx>0` 翻转，与新 `resources/cat-skins/**/walk1` 资源朝右的实际朝向相反，导致猫头反向）；`walkV / stun` 改为 `dy>0` 时旋转 180°（实测 `walk2` 资源默认面朝上，向下走时翻 180° 转朝下）。资源默认朝向请按 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4.1 的约定提供。
+- 猫显示尺寸放大：`BoardView` 新增 `CAT_DISPLAY_SCALE = 1.5`，棋盘上的猫节点半径乘以该系数，整体视觉放大 1.5 倍（老鼠尺寸保持不变）。后续如需调大 / 调小整体猫的显示比例，统一改这一个常量即可。
+- 个人中心"使用"按钮 layer 修复：`PersonalCenterPage.createActionBtn` 在 `makeLabelButton` 之后显式 `syncUiLayer(btn)`，避免 `new Node()` 默认 `Default` layer 与 Canvas 的 `UI_2D` 不一致导致按钮被 UI Camera 忽略；表现为兑换 / 解锁后"使用"按钮在卡片下方不可见，刷新或重进个人中心才偶然出现。
+
+### 美术 / 资源
 - 皮肤帧组接入：`default / golden / ninja / pirate` 四套猫帧从临时目录迁移到 `assets/resources/cat-skins/<skinId>/{start,walk1,walk2,xuanyun}/`；新增 `assets/scripts/game/catSkinLoader.ts` 通过 `resources.loadDir` 按当前皮肤运行时加载；`GameController` 移除原 `catAnimFramesStart / WalkHorizontal / WalkVertical / Stun` 四个 Inspector `SpriteFrame[]` 字段，改由 `applyCurrentCatSkin` → `applyCatSkinFrames(skinId)` 异步装配；`BoardView.sortCatSpriteFrames` 兼容 `frame-NN` / `frame_NN` / `startN` 等命名。
 - 旧散帧 `assets/images/cat/{start,walk1,walk2,xuanyun}/` 与 `start1.png` 一并删除（已被新 `default` 皮肤帧组替代）。
 
