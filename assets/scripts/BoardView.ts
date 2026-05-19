@@ -221,7 +221,7 @@ export class BoardView extends Component {
       return;
     }
     this.catAnim = {
-      secPerFrame: Math.max(0.04, opts.frameDurationSec ?? 0.2),
+      secPerFrame: Math.max(0.04, opts.frameDurationSec ?? 0.1),
       start,
       walkH,
       walkV,

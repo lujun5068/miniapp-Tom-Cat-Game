@@ -190,9 +190,9 @@ export class GameController extends Component {
 
   @property({
     tooltip:
-      '猫动画帧间隔（秒），与拆帧 delay 一致时可用 0.2；帧数据按当前皮肤运行时从 resources/cat-skins/ 加载',
+      '猫动画帧间隔（秒）。新像素皮肤帧数较少（walk 4~5 帧），推荐 0.08~0.12；旧 GIF 拆帧每帧 delay 0.2 时可设 0.2。帧数据按当前皮肤运行时从 resources/cat-skins/ 加载。',
   })
-  catAnimFrameSec = 0.2;
+  catAnimFrameSec = 0.1;
 
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;

@@ -339,7 +339,7 @@
       "__uuid__": "8a07ec03-5fba-4154-97e9-6c6e1107cd75@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
-    "catAnimFrameSec": 0.2,
+    "catAnimFrameSec": 0.1,
     "sfMouse": {
       "__uuid__": "5a5a1364-ef13-4908-97fe-9099033c5924@f9941",
       "__expectedType__": "cc.SpriteFrame"
