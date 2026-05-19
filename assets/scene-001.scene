@@ -349,6 +349,7 @@
       "__expectedType__": "cc.SpriteFrame"
     },
     "mouseSpriteScale": 1.5,
+    "mouseAnimFrameSec": 0.15,
     "sfUiBg": {
       "__uuid__": "73fb6749-77b6-4e77-a5a7-47bf4065cda1@f9941",
       "__expectedType__": "cc.SpriteFrame"

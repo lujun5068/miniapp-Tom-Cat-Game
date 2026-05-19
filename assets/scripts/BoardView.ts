@@ -23,6 +23,13 @@ import {
   hasFloorSprite,
   type MapTileSpriteFrames,
 } from './render/MapTileSpriteFrames';
+import {
+  RAT_SKIN_IDS,
+  RAT_DIRECTIONS,
+  type RatDirection,
+  type RatSkinId,
+  type RatSkinPack,
+} from './game/ratSkinLoader';
 
 const { ccclass } = _decorator;
 
@@ -34,6 +41,13 @@ type CatAnimPack = {
   walkH: SpriteFrame[];
   walkV: SpriteFrame[];
   stun: SpriteFrame[];
+};
+
+type RatRuntimeState = {
+  skin: RatSkinId;
+  dir: RatDirection;
+  animTime: number;
+  frameIndex: number;
 };
 
 const CAT_VERTICAL_ANIM_SCALE = 0.75;
@@ -125,6 +139,12 @@ export class BoardView extends Component {
   private mouseFrameVertical: SpriteFrame | null = null;
   /** 相对默认老鼠显示尺寸的缩放（默认 1） */
   private mouseDisplayScale = 1;
+  /** 老鼠方向帧组（4 皮肤 × 4 方向 × N 帧），来自 ratSkinLoader.loadAllRatSkinFrames */
+  private ratSkinPack: RatSkinPack | null = null;
+  /** 老鼠方向帧动画的每帧时长（秒） */
+  private ratAnimSecPerFrame = 0.15;
+  /** 每只老鼠在本场内的稳定皮肤 / 方向 / 动画时间状态（按 mouse.id 维护） */
+  private readonly ratState = new Map<number, RatRuntimeState>();
 
   /** 地板 / 外圈 / 内圈石头贴图相对单格的缩放（默认 1 与格对齐） */
   private mapTileScales: MapTileDisplayScales = {
@@ -196,6 +216,28 @@ export class BoardView extends Component {
     if (opts.displayScale !== undefined && Number.isFinite(opts.displayScale)) {
       this.mouseDisplayScale = Math.max(0.25, Math.min(4, opts.displayScale));
     }
+  }
+
+  /**
+   * 注入老鼠四方向帧组。一旦 pack 至少包含一个皮肤的某方向帧，drawEntities 会改走
+   * "随机皮肤 + 方向动画"分支：每只老鼠按 id 稳定地分配一种皮肤，按位移自动选择
+   * up/down/left/right 帧组并按 `frameDurationSec` 循环播放；当前方向缺帧时按
+   * "其它方向 → 单帧 mouseFrame → 色块"顺序回退。
+   *
+   * 多次调用以最后一次为准；ratState 会全部清空，避免旧动画时间错位。
+   */
+  setMouseSkinFrames(opts: {
+    pack: RatSkinPack | null;
+    frameDurationSec?: number;
+  }): void {
+    this.ratSkinPack = opts.pack;
+    if (
+      opts.frameDurationSec !== undefined &&
+      Number.isFinite(opts.frameDurationSec)
+    ) {
+      this.ratAnimSecPerFrame = Math.max(0.04, opts.frameDurationSec);
+    }
+    this.ratState.clear();
   }
 
   /**
@@ -281,6 +323,7 @@ export class BoardView extends Component {
     this.mapGfx.clear();
     this.mapObstacleGfx.clear();
     this.mousePrevGrid.clear();
+    this.ratState.clear();
     clearChildren(this.miceRoot, this.mousePool);
 
     const f = this.mapFrames;
@@ -541,7 +584,8 @@ export class BoardView extends Component {
       this.entityGfx.fill();
     }
 
-    if (this.mouseFrame) {
+    const hasRatSkins = this.hasAnyRatSkinFrames();
+    if (this.mouseFrame || hasRatSkins) {
       const seen = new Set<number>();
       const baseSide = Math.min(t * 0.22, 11) * 2.2 * this.mouseDisplayScale;
       for (const m of sim.mice) {
@@ -571,20 +615,25 @@ export class BoardView extends Component {
         const p = cellCenterLocal(m.x, m.y, gw, gh, t);
         n.setPosition(p.x, p.y, 0);
         const prev = this.mousePrevGrid.get(m.id);
-        if (prev && (prev.x !== m.x || prev.y !== m.y)) {
-          const dx = m.x - prev.x;
-          const dy = m.y - prev.y;
-          if (dx !== 0) {
+        const dx = prev ? m.x - prev.x : 0;
+        const dy = prev ? m.y - prev.y : 0;
+        if (hasRatSkins) {
+          this.applyRatSkinFrame(n, sp, m.id, dx, dy, dt);
+        } else {
+          // 旧的单帧 + 翻转分支：mouseFrame 必非空（外层 if 已保证）
+          if (prev && (dx !== 0 || dy !== 0)) {
+            if (dx !== 0) {
+              sp.spriteFrame = this.mouseFrame;
+              /* 贴图默认朝向与网格位移相反时需左右翻转 */
+              n.setScale(dx > 0 ? -1 : 1, 1, 1);
+            } else {
+              sp.spriteFrame = this.mouseFrameVertical ?? this.mouseFrame;
+              n.setScale(1, dy > 0 ? -1 : 1, 1);
+            }
+          } else if (!prev) {
             sp.spriteFrame = this.mouseFrame;
-            /* 贴图默认朝向与网格位移相反时需左右翻转 */
-            n.setScale(dx > 0 ? -1 : 1, 1, 1);
-          } else if (dy !== 0) {
-            sp.spriteFrame = this.mouseFrameVertical ?? this.mouseFrame;
-            n.setScale(1, dy > 0 ? -1 : 1, 1);
+            n.setScale(1, 1, 1);
           }
-        } else if (!prev) {
-          sp.spriteFrame = this.mouseFrame;
-          n.setScale(1, 1, 1);
         }
         this.mousePrevGrid.set(m.id, { x: m.x, y: m.y });
       }
@@ -596,6 +645,7 @@ export class BoardView extends Component {
           c.active = false;
           this.mousePool.push(c);
           this.mousePrevGrid.delete(id);
+          this.ratState.delete(id);
         }
       }
     } else {
@@ -606,6 +656,94 @@ export class BoardView extends Component {
         this.entityGfx.fill();
       }
     }
+  }
+
+  /** ratSkinPack 至少包含一个皮肤的任一方向有帧 → drawEntities 启用方向动画分支 */
+  private hasAnyRatSkinFrames(): boolean {
+    const pack = this.ratSkinPack;
+    if (!pack) return false;
+    for (const skin of RAT_SKIN_IDS) {
+      const dirs = pack[skin];
+      if (!dirs) continue;
+      for (const dir of RAT_DIRECTIONS) {
+        if (dirs[dir] && dirs[dir].length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** 当前方向若缺帧，依序回退到其它方向（保证至少能拿到 1 张帧组） */
+  private pickRatFrames(
+    skin: RatSkinId,
+    dir: RatDirection,
+  ): SpriteFrame[] {
+    const dirs = this.ratSkinPack?.[skin];
+    if (!dirs) return [];
+    if (dirs[dir]?.length) return dirs[dir];
+    for (const fallbackDir of RAT_DIRECTIONS) {
+      if (fallbackDir === dir) continue;
+      const fb = dirs[fallbackDir];
+      if (fb?.length) return fb;
+    }
+    return [];
+  }
+
+  /**
+   * 方向动画分支：
+   * - 第一次出现的老鼠按 id 稳定地随机分配一种皮肤、默认方向 right；
+   * - 后续每帧按 dx/dy 更新方向（无位移保持原方向），按 ratAnimSecPerFrame 推进 frameIndex；
+   * - 帧贴图已含朝向，节点 setScale 强制 (1,1,1) 避免与旧 mouseFrame 翻转逻辑冲突；
+   * - 当前方向缺帧时回退到其它方向；若该皮肤完全没帧再回退到 mouseFrame（或保持上一帧）。
+   */
+  private applyRatSkinFrame(
+    node: Node,
+    sprite: Sprite,
+    mouseId: number,
+    dx: number,
+    dy: number,
+    dt: number,
+  ): void {
+    let state = this.ratState.get(mouseId);
+    if (!state) {
+      const skinIdx = Math.floor(Math.random() * RAT_SKIN_IDS.length);
+      state = {
+        skin: RAT_SKIN_IDS[skinIdx],
+        dir: 'right',
+        animTime: 0,
+        frameIndex: 0,
+      };
+      this.ratState.set(mouseId, state);
+    }
+    // 方向映射约定（与资源命名一致）：
+    //   - rat_skins/<skin>/left|right：贴图鼻子方向与文件夹名一致，向左 / 向右移动直接用同名目录；
+    //   - rat_skins/<skin>/up|down：实测用户资源是按"老鼠看上去面朝哪边"命名，与游戏内运动方向相反，
+    //     即网格 `dy > 0`（屏幕往下走）应取 `up/` 帧、`dy < 0`（屏幕往上走）应取 `down/` 帧。
+    //     如果未来重新出图改成"按运动方向"命名，把下面两条互换即可。
+    let nextDir: RatDirection | null = null;
+    if (dx > 0) nextDir = 'right';
+    else if (dx < 0) nextDir = 'left';
+    else if (dy > 0) nextDir = 'up';
+    else if (dy < 0) nextDir = 'down';
+    if (nextDir && nextDir !== state.dir) {
+      state.dir = nextDir;
+      state.animTime = 0;
+      state.frameIndex = 0;
+    }
+
+    const frames = this.pickRatFrames(state.skin, state.dir);
+    if (frames.length === 0) {
+      sprite.spriteFrame = this.mouseFrame;
+      node.setScale(1, 1, 1);
+      return;
+    }
+    state.animTime += dt;
+    const secPerFrame = this.ratAnimSecPerFrame;
+    while (state.animTime >= secPerFrame) {
+      state.animTime -= secPerFrame;
+      state.frameIndex = (state.frameIndex + 1) % frames.length;
+    }
+    sprite.spriteFrame = frames[state.frameIndex] ?? frames[0];
+    node.setScale(1, 1, 1);
   }
 
   private resolveCatDisplay(

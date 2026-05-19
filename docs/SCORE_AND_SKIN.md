@@ -200,3 +200,45 @@ setupWechatShare({
 - 当日首次分享后积分 +10、卡片底部提示切换为"已领取"；再次分享不重复入账。
 - 进入个人中心 → 兑换皮肤 → 返回主游戏 → 再进个人中心，确认皮肤状态、积分、分享文案、scroll area 均正常。
 - 微信小游戏构建：`personal-center` Bundle 进入 subpackage、首包减小；存档与音频开关跨进程保持。
+
+---
+
+## 9. 老鼠皮肤（纯视觉，与积分无关）
+
+老鼠皮肤是地图上的视觉装饰，**不与积分 / 玩家拥有皮肤挂钩**：每只老鼠首次出现时由 `BoardView` 用 `Math.random()` 按 id 稳定地随机分配一种皮肤，并按移动方向播放对应帧动画。玩家无法选择、不能解锁、不会写入存档。
+
+### 9.1 资源目录约定
+
+```text
+assets/resources/rat_skins/
+└── <skinId>/                # 当前 4 套：black / brown / dark_brown / white
+    ├── up/    1.png 2.png 3.png
+    ├── down/  1.png 2.png 3.png
+    ├── left/  1.png 2.png 3.png
+    └── right/ 1.png 2.png 3.png
+```
+
+- 帧贴图**自带方向**，渲染层不会再做 `setScale` 翻转或旋转。
+- 文件名按内部数字段排序（`1.png` / `frame-01.png` 等都兼容）。
+- 增加 / 删除皮肤：在 `ratSkinLoader.RAT_SKIN_IDS` 增删对应 id 再丢资源即可，无需改 `BoardView` 或 `GameController` 代码。
+- **方向命名约定（重要）**：当前资源 `left/`、`right/` 中的老鼠鼻子方向与文件夹名一致（向左 / 向右移动直接用同名目录）；`up/`、`down/` 按"老鼠看上去面朝哪边"命名，**与游戏内运动方向相反**——即 `BoardView` 在屏幕往下走时取 `up/` 帧、屏幕往上走时取 `down/` 帧（详见 `applyRatSkinFrame` 注释，未来若改为"按运动方向"命名只需互换两行）。如新增皮肤建议沿用同一约定，避免方向乱套。
+
+### 9.2 运行时流程
+
+- 加载：`game/ratSkinLoader.ts` 暴露 `loadAllRatSkinFrames()`，一次性遍历 4 皮肤 × 4 方向 × N 帧并按数字排序。
+- 注入：`GameController.applyRatSkinFrames()` 在 `onLoad` 完成 BoardView 配置后异步调用，把 `RatSkinPack` 写入 `BoardView.setMouseSkinFrames({ pack, frameDurationSec: mouseAnimFrameSec })`。
+- 渲染：`BoardView.drawEntities` 若 `hasAnyRatSkinFrames()` 为真则走方向动画分支：
+  - 每只老鼠 id 首次出现时随机分配 `skin`、默认方向 `right`、`animTime/frameIndex` 归零；
+  - 后续每帧按 `dx/dy` 计算下一方向（无位移保持原方向），方向变化时立刻把 `animTime/frameIndex` 归零防止串帧；
+  - 按 `dt` 累加 `animTime`，超过 `ratAnimSecPerFrame` 就推进 `frameIndex` 并循环；
+  - 当前方向缺帧时按"其它方向 → 单帧 `sfMouse`"顺序回退。
+- 清理：`ratState` 在 `rebuildMap` / 老鼠节点对象池回收 / `setMouseSkinFrames` 三处清空，避免与节点对象池复用产生残留旧动画。
+
+### 9.3 与猫皮肤的区别
+
+| 维度 | 猫皮肤 | 老鼠皮肤 |
+| --- | --- | --- |
+| 玩家可选 | 是（个人中心兑换 / 切换） | 否（随机分配） |
+| 写入存档 | 是（`unlockedSkins` / `currentSkin`） | 否 |
+| 帧方向处理 | 资源默认朝右 / 朝上，渲染层翻转 + 旋转 | 资源自带 4 方向，渲染层不翻转 |
+| 配置入口 | `skinConfig.ts` + 个人中心 | `ratSkinLoader.RAT_SKIN_IDS` |

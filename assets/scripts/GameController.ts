@@ -54,6 +54,7 @@ import { ScoreManager } from './game/ScoreManager';
 import { loadPersonalCenterScene } from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
 import { loadCatSkinFrames } from './game/catSkinLoader';
+import { loadAllRatSkinFrames } from './game/ratSkinLoader';
 import {
   defaultBtnCornerRadius,
   makeLabelButton,
@@ -207,6 +208,12 @@ export class GameController extends Component {
     tooltip: '老鼠精灵显示相对默认尺寸的缩放（如 1.5 即放大 1.5 倍）',
   })
   mouseSpriteScale = 1.5;
+
+  @property({
+    tooltip:
+      '老鼠方向帧动画帧间隔（秒）。资源每方向 3 帧，0.12~0.18 看上去较自然；只在 resources/rat_skins 加载成功后生效，否则保留单帧 + 翻转的旧行为。',
+  })
+  mouseAnimFrameSec = 0.15;
 
   @property({ type: SpriteFrame, tooltip: '全屏 UI 底图（可空则用主题色块）' })
   sfUiBg: SpriteFrame | null = null;
@@ -565,6 +572,7 @@ export class GameController extends Component {
       verticalFrame: this.sfMouseVertical,
       displayScale: this.mouseSpriteScale,
     });
+    void this.applyRatSkinFrames();
     this.boardView.configureMapTileScales({
       floor: this.mapTileScaleFloor,
       edge: this.mapTileScaleEdge,
@@ -1807,6 +1815,20 @@ export class GameController extends Component {
       framesWalkVertical: frames.walkV,
       framesStun: frames.stun,
       frameDurationSec: this.catAnimFrameSec,
+    });
+  }
+
+  /**
+   * 异步加载 `resources/rat_skins/<skinId>/<direction>` 全部帧组，写入 BoardView。
+   * 老鼠皮肤是纯视觉随机（每只老鼠首次出现时按 id 稳定地随机选一种），与积分系统无关；
+   * 帧组缺失时 BoardView 会按 "其它方向 → 单帧 sfMouse → 色块" 顺序回退。
+   */
+  private async applyRatSkinFrames(): Promise<void> {
+    const pack = await loadAllRatSkinFrames();
+    if (!this.boardView || !this.boardView.isValid) return;
+    this.boardView.setMouseSkinFrames({
+      pack,
+      frameDurationSec: this.mouseAnimFrameSec,
     });
   }
 }
