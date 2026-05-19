@@ -53,13 +53,25 @@ const defaultSave = (): ScoreSaveV2 => ({
   failureRewardCount: 0,
 });
 
+export type DailyLoginRewardResult = {
+  /** 是否本次调用真正发放了奖励（首调用 / 跨日时为 true） */
+  granted: boolean;
+  /** 实际入账的积分；未发放时为 0 */
+  amount: number;
+};
+
 export class ScoreManager {
   private static instance: ScoreManager;
   private saveData!: ScoreSaveV2;
 
+  /**
+   * 构造函数只做存档加载，不再附带"发放每日登录奖励"等业务副作用。
+   * 这样测试脚本 / 工具入口拿到实例时不会被动触发奖励发放或写盘。
+   * 主游戏流程应在 `GameController.onLoad` 等场景控制入口显式调用
+   * {@link claimDailyLoginRewardIfNeeded}。
+   */
   private constructor() {
     this.loadFromDisk();
-    this.checkDailyLogin();
   }
 
   public static getInstance(): ScoreManager {
@@ -150,15 +162,31 @@ export class ScoreManager {
     }
   }
 
-  private checkDailyLogin(): void {
+  /**
+   * 当日首次调用：发放每日登录奖励并写盘；同一日内重复调用是幂等的 no-op。
+   * 返回值用于上层（例如登录弹窗）展示实际发放金额，便于未来改成动态金额。
+   *
+   * 注意：本方法只负责"积分入账 + 写盘"，不会自动弹窗。弹窗的展示状态由
+   * {@link shouldShowLoginPopup} / {@link markLoginPopupShown} 控制，便于先入账
+   * 后展示，且即使本次没看到弹窗也只会下次再展示一次（不会重复发奖）。
+   */
+  public claimDailyLoginRewardIfNeeded(): DailyLoginRewardResult {
     const today = this.localDateString();
-    if (this.saveData.lastLoginDate !== today) {
-      this.addScore(DAILY_LOGIN_REWARD, '每日登录奖励');
-      this.saveData.lastLoginDate = today;
-      this.saveToDisk();
+    if (this.saveData.lastLoginDate === today) {
+      return { granted: false, amount: 0 };
     }
+    this.addScore(DAILY_LOGIN_REWARD, '每日登录奖励');
+    this.saveData.lastLoginDate = today;
+    this.saveToDisk();
+    return { granted: true, amount: DAILY_LOGIN_REWARD };
   }
 
+  /**
+   * 是否还需要展示今日的登录奖励弹窗。仅当 {@link claimDailyLoginRewardIfNeeded}
+   * 已把当日积分入账（即 lastLoginDate === 今日）且尚未确认过弹窗时返回 true。
+   * 这保证了"入账与弹窗解耦"——即便上次没看到弹窗，下次再开仍会展示，
+   * 但不会重复发奖。
+   */
   public shouldShowLoginPopup(): boolean {
     const today = this.localDateString();
     return (

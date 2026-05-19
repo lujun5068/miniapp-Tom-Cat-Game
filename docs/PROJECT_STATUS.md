@@ -148,3 +148,6 @@
 | 2026-05-19 | 分享文案刷新：`PersonalCenterPage.refreshScoreCard` 后会重新 `setupWechatShare`，分享卡片随积分 / 解锁数实时更新 |
 | 2026-05-19 | 失败积分频控：`ScoreManager.addLoseReward` 每日入账上限 10 次（+20 分/天），存档新增 `failureRewardDate/Count`；失败弹窗在达到上限时给出提示文案 |
 | 2026-05-19 | 存储健壮性：`platformKv.decodeWxValue` 只接受字符串，避免遇到非预期类型时被 `JSON.stringify` 二次包装；清理 `PersonalCenterPage.updateScrollAreaSize` 死代码与 `BoardView.ts` 未使用的 `BatchNode` import |
+| 2026-05-19 | ScoreManager 构造副作用拆分：构造函数只做 `loadFromDisk`，每日登录奖励由 `claimDailyLoginRewardIfNeeded` 显式接口提供，主游戏 `GameController.onLoad` 调用；工具脚本只读访问不再触发发奖与写盘 |
+| 2026-05-19 | 资源清理：删除遗留场景 `assets/scene.scene` 及其 meta（启动场景始终是 `scene-001.scene`，由 `settings/v2/packages/scene.json` 指定），同步更新 README 与 `docs/DESIGN_DOC.html` 中的项目结构示意 |
+| 2026-05-19 | 文档校准：`DESIGN_DOC.md` §5 改为"已完成 / 进行中 / 待办"分类的路线图；`INTEGRATION_SYSTEM_DESIGN.md` §3 / §8 同步 ScoreManager 构造拆分、个人中心独立 Bundle 现状与历史措辞清理；`PERFORMANCE_OPTIMIZATION.md` 个人中心收益明确为定性结论，新增 profiler 实测数据 TODO 表格 |

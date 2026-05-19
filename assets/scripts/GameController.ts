@@ -312,6 +312,9 @@ export class GameController extends Component {
   onLoad(): void {
     gameSession.initFromDisk();
     this.scoreManager = ScoreManager.getInstance();
+    // 仅在"真正进入主游戏场景"这一明确入口发放每日登录奖励，
+    // 避免任何其他调用 ScoreManager.getInstance() 的入口（测试脚本 / 工具页）误触发。
+    this.scoreManager.claimDailyLoginRewardIfNeeded();
     setupWechatShare({
       title: '来帮 Tom 抓住这群狡猾的杰瑞！',
       query: 'from=game',

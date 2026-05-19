@@ -38,6 +38,8 @@ export type ScoreSaveV2 = {
   unlockedSkins: string[];      // 已解锁的皮肤 ID
   currentSkin: string;          // 当前使用的皮肤 ID
   history: ScoreHistoryEntry[]; // 最近积分流水
+  failureRewardDate: string;    // 当日失败积分入账日期，跨日重置
+  failureRewardCount: number;   // 当日失败积分入账次数，达到上限后不再发放
 };
 ```
 
@@ -104,18 +106,23 @@ export const catSkins: CatSkin[] = [
 
 当前实现要点：
 
-- `ScoreManager` 使用单例，首次初始化时自动加载本地积分存档并检查每日登录奖励。
+- `ScoreManager` 使用单例，构造函数只做存档加载（`loadFromDisk`），**不再附带"自动检查每日登录"等业务副作用**。
+- 每日登录积分由主游戏场景（`GameController.onLoad`）显式调用 `claimDailyLoginRewardIfNeeded()` 发放，确保只在玩家真正进入游戏时入账，工具脚本 / 测试入口只读不会触发。
 - 存储 key 仍为 `cat-game-score-v1`，但数据结构已升级为 `version: 2`，兼容旧 v1 存档迁移。
 - 日期判断使用本地 `YYYY-MM-DD`，避免 UTC 日期导致每日登录奖励在北京时间早上 8 点切换。
 - 积分分为 `availableScore`（可用积分）和 `totalEarnedScore`（累计获得积分）。
+- 失败积分通过 `addLoseReward(amount, reason)` 入账，每日次数上限 10 次（即每日失败最多 +20 分），跨日自动重置。
 - 最近积分流水保留在 `history` 中，目前最多保存 50 条。
 - 默认皮肤始终视为已解锁；非默认皮肤可兑换、切换，当前阶段使用 `visualTint` 做可见区分。
 
 关键公开方法：
 
 ```typescript
-ScoreManager.getInstance();
-scoreManager.addScore(amount, reason);
+ScoreManager.getInstance();                      // 仅加载存档，无副作用
+scoreManager.claimDailyLoginRewardIfNeeded();    // 由 GameController.onLoad 显式调用
+scoreManager.addScore(amount, reason);           // 通用入账
+scoreManager.addLoseReward(amount, reason);      // 失败积分专用，带每日次数频控
+scoreManager.getLoseRewardRemainingToday();      // 当日失败积分剩余次数
 scoreManager.getTotalScore();
 scoreManager.getTotalEarnedScore();
 scoreManager.getScoreHistory();
@@ -142,44 +149,32 @@ private scoreManager: ScoreManager;
 onLoad(): void {
   // 现有代码...
   this.scoreManager = ScoreManager.getInstance();
+  // 仅在真正进入主游戏场景时显式发放每日登录积分，
+  // 任何只用于读取存档的入口（如测试 / 工具脚本）不会被动入账。
+  this.scoreManager.claimDailyLoginRewardIfNeeded();
   // 现有代码...
+  if (this.scoreManager.shouldShowLoginPopup()) {
+    this.showLoginRewardPopup();
+  }
 }
 
-// 在游戏结束处理中添加积分发放
+// 在游戏结束处理中发放积分
 if (this.sim.gameEnd !== 'none' && !this.endModalShown) {
   this.endModalShown = true;
   this.gameRunning = false;
   this.gameAudio.pauseBgm();
   if (this.sim.gameEnd === 'win') {
-    const k = String(this.sim.level);
-    const save = loadLevelSave();
-    const prevBest = Math.max(
-      gameSession.bests[k] ?? 0,
-      save.bestTimeRemainingSec[k] ?? 0,
-    );
-    const isNewPersonalBest = this.sim.timeLeft > prevBest;
-    gameSession.recordClearedLevel(this.sim.level, this.sim.timeLeft);
-    
-    // 发放积分
+    // ... 计算 isNewPersonalBest、记录关卡进度 ...
     this.scoreManager.addScore(5, '游戏胜利');
-    if (isNewPersonalBest) {
-      this.scoreManager.addScore(10, '破关卡记录');
-    }
-    
-    this.gameAudio.playWin();
-    this.showEndModal(
-      'win',
-      this.sim.level,
-      this.sim.timeLeft,
-      isNewPersonalBest,
-    );
+    if (isNewPersonalBest) this.scoreManager.addScore(10, '破关卡记录');
+    this.showEndModal('win', this.sim.level, this.sim.timeLeft, isNewPersonalBest, '积分 +5');
   } else {
-    // 发放积分
-    this.scoreManager.addScore(2, '游戏失败');
-    
-    this.gameAudio.playLose();
-    vibrateLong();
-    this.showEndModal('lose', this.sim.level, this.sim.timeLeft, false);
+    // 失败积分走每日次数频控，达到上限后返回 0，弹窗文案改成提示
+    const granted = this.scoreManager.addLoseReward(2, '游戏失败');
+    const scoreText = granted > 0
+      ? `积分 +${granted}`
+      : '已达今日失败积分上限，本次不再发放';
+    this.showEndModal('lose', this.sim.level, this.sim.timeLeft, false, scoreText);
   }
   this.syncRunBtn();
 }
@@ -195,9 +190,10 @@ if (this.sim.gameEnd !== 'none' && !this.endModalShown) {
 
 个人中心已拆为独立场景和脚本：
 
-- 场景：`assets/PersonalCenterPage.scene`
+- 场景：`assets/personal-center/PersonalCenterPage.scene`（位于独立 Bundle `personal-center`）
 - 脚本：`assets/scripts/PersonalCenterPage.ts`
-- 路由常量：`assets/scripts/game/sceneRoutes.ts`
+- 路由 / Bundle 常量：`assets/scripts/game/sceneRoutes.ts`（`PERSONAL_CENTER_BUNDLE` / `PERSONAL_CENTER_SCENE` / `MAIN_GAME_SCENE`）
+- 加载封装：`loadPersonalCenterScene()` 通过 `assetManager.loadBundle('personal-center')` 拉取 subpackage 并 `bundle.loadScene(...)` 进入
 
 页面结构：
 
@@ -303,14 +299,16 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 22. **失败积分每日频控**：`ScoreManager` 新增 `addLoseReward`，每日最多入账 10 次（即每日失败最多 +20 分），并在存档新增 `failureRewardDate` / `failureRewardCount` 字段（向后兼容默认 0）；`GameController` 结算文案在达到上限时提示"已达今日失败积分上限"，避免秒输刷分。
 23. **v1 迁移注释**：在 `migrateFromV1` 中显式注明 v1 只存了余额、`totalEarnedScore` 只能按当前余额作为下界，属于历史不可逆数据丢失，对应展示与排行需求按此约定。
 24. **个人中心死代码清理**：删除未被调用的 `updateScrollAreaSize` / `getScrollViewNode`；`BoardView.ts` 移除未使用的 `BatchNode` 引入。
+25. **ScoreManager 构造副作用拆分**：构造函数只做 `loadFromDisk`，原 `checkDailyLogin` 改为公开方法 `claimDailyLoginRewardIfNeeded`，由 `GameController.onLoad` 显式调用。这样测试 / 工具脚本只读访问 `ScoreManager.getInstance()` 不再触发"加积分 + 写盘"，避免对真实玩家存档造成误写。
+26. **删除遗留场景文件**：清掉 `assets/scene.scene` 及其 meta（启动场景始终是 `scene-001.scene`，对应 `settings/v2/packages/scene.json` 的 `current-scene` UUID），同时同步 README / DESIGN_DOC.html 中的项目结构示意。
 
 ### 8.3 当前保留限制
 
 1. **皮肤资源仍是占位实现**：当前用色调区分皮肤，后续接入 `assets/images/cat/skins/` 多套动画资源后，应由 `BoardView` 按当前皮肤加载对应帧组。
 2. **失败奖励限制策略简单**：当前只用"每日入账次数上限（10 次/天）"做频控，没有最低游玩时长或关卡难度门槛。如果出现高级刷分手法（例如自动化挂机失败），需要再叠加最低游戏时长或单局有效输入次数判断。
 3. **积分历史只保留最近记录**：当前只保留最近 50 条流水，用于轻量展示，不作为审计账本。
-4. **微信小游戏分包配置**：个人中心已通过 `assets/personal-center/` 目录的 Bundle 配置打成 wechatgame subpackage，Bundle 名 `personal-center` 由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。若未来重命名目录或调整 Bundle 名，需同步修改 `assets/personal-center.meta` 中 `userData.bundleName` 和该常量；其他平台默认 `merge_dep`，仅微信走 subpackage。
-5. **主场景状态恢复**：个人中心返回主场景时仍通过 `director.loadScene('scene-001')` 重载主场景，当前依赖进入个人中心前写盘恢复进度。若后续需要无缝回到暂停点，需要引入更完整的运行态保存或覆盖式页面方案。
+4. **微信小游戏分包配置**：个人中心已通过 `assets/personal-center/` 目录的 Bundle 配置打成 wechatgame subpackage，Bundle 名 `personal-center` 由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。历史上曾短暂借用过 `main` Bundle 的 `loadBundle/loadScene` API（场景文件还在 `assets/PersonalCenterPage.scene`），现已迁移到独立 Bundle，文档中如再看到 `PERSONAL_CENTER_BUNDLE = 'main'` 的旧描述以本节为准。若未来重命名目录或调整 Bundle 名，需同步修改 `assets/personal-center.meta` 中 `userData.bundleName` 和该常量；其他平台默认 `merge_dep`，仅微信走 subpackage。
+5. **主场景状态恢复**：个人中心返回主场景时通过 `sceneRoutes.loadMainGameScene()`（封装 `director.loadScene('scene-001')`）重载主场景，依赖进入个人中心前写盘恢复进度。若后续需要无缝回到暂停点，需要引入更完整的运行态保存或覆盖式页面方案。
 
 ## 9. 总结
 

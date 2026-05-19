@@ -14,21 +14,24 @@
 
 ```text
 assets/
-  audio/                 音效与背景音乐资源
-  images/                猫、老鼠、地图、UI 等图片资源
-  scene.scene            主场景
+  audio/                       音效与背景音乐资源
+  images/                      猫、老鼠、地图、UI 等图片资源
+  scene-001.scene              当前主游戏场景（启动场景，由 settings/v2/packages/scene.json 指定）
+  personal-center/             个人中心子目录，配置为独立 Bundle（wechatgame subpackage）
+    PersonalCenterPage.scene   个人中心场景，按需通过 assetManager.loadBundle 拉取
   scripts/
-    GameController.ts    游戏主控制器，负责 UI、输入、关卡流程和音频绑定
-    BoardView.ts         棋盘渲染与角色显示
-    game/                纯游戏逻辑：地图、关卡、移动、攻击、跳跃、老鼠 AI
-    audio/               Cocos 音频封装
-    render/              地图贴图配置
-    storage/             关卡存档与跨端存储
-    ui/                  UI 主题与安全区适配
-    visual/              猫动画播放
-settings/                Cocos Creator 项目设置
-package.json             Cocos Creator 项目信息
-tsconfig.json            TypeScript 配置
+    GameController.ts          游戏主控制器，负责 UI、输入、关卡流程和音频绑定
+    PersonalCenterPage.ts      个人中心页面：积分卡片、皮肤商店、积分流水弹窗
+    BoardView.ts               棋盘渲染与角色显示
+    game/                      纯游戏逻辑、积分管理、皮肤配置、场景路由（sceneRoutes.ts）
+    audio/                     Cocos 音频封装
+    render/                    地图贴图配置
+    storage/                   关卡 / 积分存档、跨端存储、微信分享封装
+    ui/                        UI 主题、安全区适配、共享 widget（widgets.ts）
+    visual/                    猫动画播放
+settings/                      Cocos Creator 项目设置（启动场景在 packages/scene.json）
+package.json                   Cocos Creator 项目信息
+tsconfig.json                  TypeScript 配置
 ```
 
 ## 使用方法
@@ -41,7 +44,7 @@ tsconfig.json            TypeScript 配置
 
 ### 运行预览
 
-1. 在 Cocos Creator 中打开 `assets/scene.scene`。
+1. 在 Cocos Creator 中打开 `assets/scene-001.scene`（即启动场景）。
 2. 确认场景中的 `Canvas` 节点已挂载 `GameController` 组件。
 3. 在 Inspector 中检查资源绑定：
    - 地图贴图：`sfMapFloor`、`sfMapEdge`、`sfMapStone1`、`sfMapStone2`
