@@ -73,3 +73,18 @@ export async function loadCatSkinFrames(
   }
   return result;
 }
+
+/**
+ * 仅加载某皮肤 `start/` 目录下第一帧，用作个人中心皮肤卡片预览。
+ * 加载失败 / 目录为空时尝试 fallback（默认皮肤）；都没有则返回 null，调用方再决定占位策略。
+ */
+export async function loadCatSkinStartFrame(
+  skinId: string,
+  fallbackSkinId = 'default',
+): Promise<SpriteFrame | null> {
+  let frames = await loadActionFrames(skinId, 'start');
+  if (frames.length === 0 && skinId !== fallbackSkinId) {
+    frames = await loadActionFrames(fallbackSkinId, 'start');
+  }
+  return frames[0] ?? null;
+}

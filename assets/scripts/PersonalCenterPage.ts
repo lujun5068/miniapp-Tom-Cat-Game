@@ -9,12 +9,15 @@ import {
   Mask,
   Node,
   ScrollView,
+  Sprite,
+  SpriteFrame,
   UITransform,
   view,
   Widget,
 } from 'cc';
 import { ScoreManager } from './game/ScoreManager';
 import type { ScoreHistoryEntry } from './game/ScoreManager';
+import { loadCatSkinStartFrame } from './game/catSkinLoader';
 import { loadMainGameScene } from './game/sceneRoutes';
 import { catSkins, type CatSkin } from './game/skinConfig';
 import { setupWechatShare } from './storage/wechatShare';
@@ -81,6 +84,8 @@ type SkinRowState = {
   bgGraphics: Graphics;
   preview: Node;
   previewGraphics: Graphics;
+  previewSprite: Sprite;
+  previewSpriteNode: Node;
 };
 
 type HistoryRowState = {
@@ -130,6 +135,8 @@ export class PersonalCenterPage extends Component {
   private skinPanel: Node | null = null;
   private skinContent: Node | null = null;
   private skinRows: Map<string, SkinRowState> = new Map();
+  /** start 帧贴图缓存：同一皮肤的预览图只加载一次，刷新卡片时直接拿现成的 SpriteFrame。 */
+  private skinPreviewCache: Map<string, SpriteFrame | null> = new Map();
   private historyScrollView: ScrollView | null = null;
   private historyContent: Node | null = null;
   private historyRows: Map<string, HistoryRowState> = new Map();
@@ -569,8 +576,13 @@ export class PersonalCenterPage extends Component {
     const row = addNode(parent, `Skin_${skin.id}`, w, h);
     const rowBg = addNode(row, 'Bg', w, h);
     const rowBgGraphics = rowBg.addComponent(Graphics);
-    const tint = addNode(row, 'TintPreview', 48, 48);
+    const tint = addNode(row, 'Preview', 48, 48);
     const tintGraphics = tint.addComponent(Graphics);
+    // 预览贴图节点叠在 Graphics 之上，加载完 start 帧后展示；占位时为空，由 Graphics 圆形兜底。
+    const previewSpriteNode = addNode(tint, 'PreviewSprite', 44, 44);
+    const previewSprite = previewSpriteNode.addComponent(Sprite);
+    previewSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    previewSprite.spriteFrame = null;
     const top = h * 0.5 - SKIN_CARD_V_PAD;
     let cursorY = top - SKIN_CARD_PREVIEW_H * 0.5;
     tint.setPosition(0, cursorY, 0);
@@ -631,6 +643,8 @@ export class PersonalCenterPage extends Component {
       bgGraphics: rowBgGraphics,
       preview: tint,
       previewGraphics: tintGraphics,
+      previewSprite,
+      previewSpriteNode,
     };
   }
 
@@ -725,49 +739,53 @@ export class PersonalCenterPage extends Component {
     isUnlocked: boolean,
     isCurrent: boolean,
   ): void {
+    // Graphics 仅负责画背景圆 + 状态边框；猫贴图由 PreviewSprite 子节点叠加显示。
     const g = state.previewGraphics;
     g.clear();
-
+    const radius = isCurrent ? 21 : isUnlocked ? 19 : 17;
+    g.fillColor = isUnlocked
+      ? new Color(48, 60, 50, 220)
+      : new Color(45, 48, 42, 200);
+    g.circle(0, 0, radius);
+    g.fill();
     if (isCurrent) {
-      g.fillColor = new Color(
-        skin.visualTint.r,
-        skin.visualTint.g,
-        skin.visualTint.b,
-        255,
-      );
-      g.circle(0, 0, 21);
-      g.fill();
       g.lineWidth = 3;
       g.strokeColor = UiTheme.honey;
-      g.circle(0, 0, 21);
-      g.stroke();
     } else if (isUnlocked) {
-      g.fillColor = new Color(
-        skin.visualTint.r,
-        skin.visualTint.g,
-        skin.visualTint.b,
-        255,
-      );
-      g.circle(0, 0, 18);
-      g.fill();
       g.lineWidth = 2;
       g.strokeColor = UiTheme.modalBtnStroke;
-      g.circle(0, 0, 18);
-      g.stroke();
     } else {
-      g.fillColor = new Color(
-        skin.visualTint.r,
-        skin.visualTint.g,
-        skin.visualTint.b,
-        128,
-      );
-      g.circle(0, 0, 16);
-      g.fill();
       g.lineWidth = 2;
-      g.strokeColor = new Color(100, 100, 100, 128);
-      g.circle(0, 0, 16);
-      g.stroke();
+      g.strokeColor = new Color(100, 100, 100, 160);
     }
+    g.circle(0, 0, radius);
+    g.stroke();
+
+    // 已解锁皮肤使用纯白避免与帧贴图自带颜色二次相乘失真；未解锁灰色 + 半透明做"未拥有"提示。
+    const sprite = state.previewSprite;
+    sprite.color = isUnlocked
+      ? new Color(255, 255, 255, 255)
+      : new Color(110, 110, 110, 180);
+
+    // 先用缓存的 SpriteFrame；缓存里没有则触发异步加载并在回调里设入。
+    const cached = this.skinPreviewCache.get(skin.id);
+    if (cached !== undefined) {
+      sprite.spriteFrame = cached;
+      return;
+    }
+    sprite.spriteFrame = null;
+    void this.fetchSkinPreviewFrame(skin.id);
+  }
+
+  private async fetchSkinPreviewFrame(skinId: string): Promise<void> {
+    if (this.skinPreviewCache.has(skinId)) return;
+    const frame = await loadCatSkinStartFrame(skinId);
+    this.skinPreviewCache.set(skinId, frame);
+    // 加载完成时组件可能已被销毁（用户已离开个人中心），需要 isValid 防御。
+    if (!this.node || !this.node.isValid) return;
+    const state = this.skinRows.get(skinId);
+    if (!state || !state.previewSprite.isValid) return;
+    state.previewSprite.spriteFrame = frame;
   }
 
   private createActionBtn(
