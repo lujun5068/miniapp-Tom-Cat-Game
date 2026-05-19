@@ -52,7 +52,7 @@ type RatRuntimeState = {
 
 const CAT_VERTICAL_ANIM_SCALE = 0.75;
 /** 棋盘上猫节点相对默认半径的额外放大系数；调大会让猫整体看起来更显眼 */
-const CAT_DISPLAY_SCALE = 1.5;
+const CAT_DISPLAY_SCALE = 1.75;
 
 /**
  * 按资源名中的帧序号排序，兼容下面几种命名：
@@ -673,10 +673,7 @@ export class BoardView extends Component {
   }
 
   /** 当前方向若缺帧，依序回退到其它方向（保证至少能拿到 1 张帧组） */
-  private pickRatFrames(
-    skin: RatSkinId,
-    dir: RatDirection,
-  ): SpriteFrame[] {
+  private pickRatFrames(skin: RatSkinId, dir: RatDirection): SpriteFrame[] {
     const dirs = this.ratSkinPack?.[skin];
     if (!dirs) return [];
     if (dirs[dir]?.length) return dirs[dir];

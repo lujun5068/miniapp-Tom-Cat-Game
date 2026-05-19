@@ -20,18 +20,10 @@ export const catSkins: CatSkin[] = [
     isDefault: true,
     visualTint: { r: 255, g: 255, b: 255 },
   },
-  // {
-  //   id: 'golden',
-  //   name: '黄金汤姆',
-  //   price: 100,
-  //   description: '金光闪闪的汤姆',
-  //   isDefault: false,
-  //   visualTint: { r: 255, g: 214, b: 80 },
-  // },
   {
     id: 'ninja',
     name: '忍者汤姆',
-    price: 100,
+    price: 0,
     description: '身手敏捷的忍者汤姆',
     isDefault: false,
     visualTint: { r: 110, g: 120, b: 155 },
@@ -39,10 +31,26 @@ export const catSkins: CatSkin[] = [
   {
     id: 'pirate',
     name: '海盗汤姆',
-    price: 100,
+    price: 0,
     description: '勇敢的海盗汤姆',
     isDefault: false,
     visualTint: { r: 210, g: 85, b: 70 },
+  },
+  {
+    id: 'fox',
+    name: '小狐仙',
+    price: 0,
+    description: '妲己MM',
+    isDefault: false,
+    visualTint: { r: 110, g: 120, b: 155 },
+  },
+  {
+    id: 'boar',
+    name: '猪刚鬣',
+    price: 0,
+    description: '天蓬元帅',
+    isDefault: false,
+    visualTint: { r: 255, g: 214, b: 80 },
   },
 ];
 
