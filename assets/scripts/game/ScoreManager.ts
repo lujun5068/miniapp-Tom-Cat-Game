@@ -27,12 +27,18 @@ type ScoreSaveV2 = {
   unlockedSkins: string[];
   currentSkin: string;
   history: ScoreHistoryEntry[];
+  /** 当日失败积分入账日期（本地 YYYY-MM-DD），用于按天重置计数 */
+  failureRewardDate: string;
+  /** 当日失败积分入账次数；达到 DAILY_LOSE_CAP_COUNT 后停止发放 */
+  failureRewardCount: number;
 };
 
 const KEY = 'cat-game-score-v1';
 const HISTORY_LIMIT = 50;
 const DEFAULT_SKIN_ID = 'default';
 const DAILY_LOGIN_REWARD = 10;
+/** 每日失败积分入账次数上限（按 +2/次 即每日失败最多额外 +20 分） */
+const DAILY_LOSE_CAP_COUNT = 10;
 
 const defaultSave = (): ScoreSaveV2 => ({
   version: 2,
@@ -43,6 +49,8 @@ const defaultSave = (): ScoreSaveV2 => ({
   unlockedSkins: [DEFAULT_SKIN_ID],
   currentSkin: DEFAULT_SKIN_ID,
   history: [],
+  failureRewardDate: '',
+  failureRewardCount: 0,
 });
 
 export class ScoreManager {
@@ -93,6 +101,8 @@ export class ScoreManager {
           saved.unlockedSkins,
         ),
         history: this.sanitizeHistory(saved.history),
+        failureRewardDate: this.sanitizeDate(saved.failureRewardDate),
+        failureRewardCount: this.sanitizeScore(saved.failureRewardCount),
       };
       if (this.saveData.totalEarnedScore < this.saveData.availableScore) {
         this.saveData.totalEarnedScore = this.saveData.availableScore;
@@ -118,12 +128,17 @@ export class ScoreManager {
     return {
       version: 2,
       availableScore,
+      // 注意：v1 存档只记录了当前余额 totalScore，没有"累计获得"信息。
+      // 这里只能把当前余额作为累计获得的下界；如果该玩家曾经获得 200 已花掉 100，
+      // 迁移后展示的累计获得仍是 100，无法恢复真实历史。属于不可逆的历史数据丢失。
       totalEarnedScore: availableScore,
       lastLoginDate,
       lastLoginPopupDate,
       unlockedSkins,
       currentSkin,
       history: [],
+      failureRewardDate: '',
+      failureRewardCount: 0,
     };
   }
 
@@ -165,6 +180,40 @@ export class ScoreManager {
     this.pushHistory('earn', score, reason);
     this.saveToDisk();
     console.log(`获得 ${score} 积分: ${reason}`);
+  }
+
+  /**
+   * 失败积分专用入口：每日最多入账 DAILY_LOSE_CAP_COUNT 次，超出后静默忽略。
+   * 返回实际入账的积分数；0 表示已达每日上限未入账。
+   * 用于防止玩家用秒输刷分（结算后立刻重玩、再秒输）。
+   */
+  public addLoseReward(amount: number, reason: string): number {
+    const score = this.sanitizeScore(amount);
+    if (score <= 0) return 0;
+    const today = this.localDateString();
+    const dayChanged = this.saveData.failureRewardDate !== today;
+    if (dayChanged) {
+      this.saveData.failureRewardDate = today;
+      this.saveData.failureRewardCount = 0;
+    }
+    if (this.saveData.failureRewardCount >= DAILY_LOSE_CAP_COUNT) {
+      // 当日已超额：只在跨日重置时才需要写盘，普通超额命中走 no-op 节省 IO。
+      if (dayChanged) this.saveToDisk();
+      return 0;
+    }
+    this.saveData.failureRewardCount += 1;
+    this.addScore(score, reason);
+    return score;
+  }
+
+  /** 当日失败积分剩余可入账次数，便于 UI 展示提示 */
+  public getLoseRewardRemainingToday(): number {
+    const today = this.localDateString();
+    if (this.saveData.failureRewardDate !== today) return DAILY_LOSE_CAP_COUNT;
+    return Math.max(
+      0,
+      DAILY_LOSE_CAP_COUNT - this.saveData.failureRewardCount,
+    );
   }
 
   public getTotalScore(): number {

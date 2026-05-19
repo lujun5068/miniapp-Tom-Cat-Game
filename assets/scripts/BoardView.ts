@@ -9,7 +9,6 @@ import {
   SpriteFrame,
   UITransform,
   Label,
-  BatchNode,
 } from 'cc';
 import { Cell } from './game/types';
 import type { GameSimulation } from './game/simulation';

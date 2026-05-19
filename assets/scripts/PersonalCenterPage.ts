@@ -4,7 +4,6 @@ import {
   Button,
   Color,
   Component,
-  director,
   Graphics,
   Label,
   Mask,
@@ -16,10 +15,17 @@ import {
 } from 'cc';
 import { ScoreManager } from './game/ScoreManager';
 import type { ScoreHistoryEntry } from './game/ScoreManager';
-import { MAIN_GAME_SCENE } from './game/sceneRoutes';
+import { loadMainGameScene } from './game/sceneRoutes';
 import { catSkins, type CatSkin } from './game/skinConfig';
 import { setupWechatShare } from './storage/wechatShare';
 import { UiTheme } from './ui/UiTheme';
+import {
+  addUiLabel as addLabel,
+  addUiNode as addNode,
+  makeLabelButton,
+  paintRoundRect,
+  solidColor,
+} from './ui/widgets';
 
 const { ccclass } = _decorator;
 
@@ -52,14 +58,6 @@ const SKIN_CARD_GAP = 16;
 const SKIN_PANEL_HEADER_HEIGHT = 86;
 const SKIN_PANEL_BOTTOM_PAD = 24;
 
-type LabelButtonOpts = {
-  fill?: Color;
-  fontSize?: number;
-  cornerRadius?: number;
-  width?: number;
-  height?: number;
-};
-
 type SkinRowState = {
   node: Node;
   nameLabel: Label;
@@ -88,98 +86,6 @@ type ScrollAreaState = {
   thumb: Node;
   thumbGraphics: Graphics;
 };
-
-function solidColor(color: Color, alpha = 255): Color {
-  return new Color(color.r, color.g, color.b, alpha);
-}
-
-function defaultBtnCornerRadius(w: number, h: number): number {
-  return Math.min(14, Math.max(7, Math.floor(Math.min(w, h) * 0.25)));
-}
-
-function paintRoundRect(
-  g: Graphics,
-  w: number,
-  h: number,
-  fill: Color,
-  cornerRadius: number,
-  stroke?: { color: Color; width: number },
-): void {
-  g.clear();
-  g.fillColor = fill;
-  g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-  g.fill();
-  if (stroke) {
-    g.lineWidth = stroke.width;
-    g.strokeColor = stroke.color;
-    g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-    g.stroke();
-  }
-}
-
-function addNode(parent: Node, name: string, w: number, h: number): Node {
-  const n = new Node(name);
-  n.layer = parent.layer;
-  n.addComponent(UITransform).setContentSize(w, h);
-  parent.addChild(n);
-  return n;
-}
-
-function addLabel(
-  parent: Node,
-  name: string,
-  text: string,
-  fontSize: number,
-  color: Color,
-  w: number,
-  h: number,
-): Label {
-  const n = addNode(parent, name, w, h);
-  const label = n.addComponent(Label);
-  label.string = text;
-  label.fontSize = fontSize;
-  label.lineHeight = Math.max(fontSize + 4, 20);
-  label.color = color;
-  label.horizontalAlign = Label.HorizontalAlign.CENTER;
-  label.verticalAlign = Label.VerticalAlign.CENTER;
-  label.overflow = Label.Overflow.CLAMP;
-  return label;
-}
-
-function makeLabelButton(text: string, opts?: LabelButtonOpts): Node {
-  const w = opts?.width ?? 112;
-  const h = opts?.height ?? 44;
-  const n = new Node(text);
-  n.addComponent(UITransform).setContentSize(w, h);
-
-  const bg = addNode(n, 'BtnBg', w, h);
-  paintRoundRect(
-    bg.addComponent(Graphics),
-    w,
-    h,
-    opts?.fill ?? solidColor(UiTheme.modalActionBtnFill),
-    opts?.cornerRadius ?? defaultBtnCornerRadius(w, h),
-    { color: UiTheme.modalBtnStroke, width: UiTheme.modalBtnStrokeWidth },
-  );
-
-  const label = addLabel(
-    n,
-    'Lbl',
-    text,
-    opts?.fontSize ?? 18,
-    UiTheme.cream,
-    w,
-    h,
-  );
-  label.overflow = Label.Overflow.CLAMP;
-
-  const btn = n.addComponent(Button);
-  btn.target = n;
-  btn.transition = Button.Transition.SCALE;
-  btn.zoomScale = 0.94;
-  btn.duration = 0.08;
-  return n;
-}
 
 function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -313,7 +219,10 @@ export class PersonalCenterPage extends Component {
     content
       .getComponent(UITransform)!
       .setContentSize(contentW, Math.max(vs.height, pageHeight));
-    content.setPosition(0, Math.max(vs.height, pageHeight) * 0.5, 0);
+    // content 锚点为 (0.5, 1)，position.y 表示内容顶端在父节点中的位置。
+    // 父节点（view）锚点 (0.5, 0.5)、高度 = vs.height，其顶端在父空间为 vs.height / 2。
+    // 因此内容顶端始终对齐视口顶端，与内容总高度无关。
+    content.setPosition(0, vs.height * 0.5, 0);
     this.syncUiLayer(content);
   }
 
@@ -386,9 +295,7 @@ export class PersonalCenterPage extends Component {
   }
 
   private buildHeader(parent: Node, contentW: number): void {
-    const back = makeLabelButton('返回', {
-      width: 112,
-      height: 44,
+    const back = makeLabelButton('返回', 112, 44, {
       fontSize: 18,
       fill: solidColor(UiTheme.modalActionBtnFill),
     });
@@ -397,7 +304,7 @@ export class PersonalCenterPage extends Component {
     backW.isAlignLeft = true;
     backW.top = HEADER_TOP;
     backW.left = 0;
-    parent.addChild(this.wrapBtn(back, () => director.loadScene(MAIN_GAME_SCENE)));
+    parent.addChild(this.wrapBtn(back, () => loadMainGameScene()));
 
     const title = this.addAnchoredLabel(
       parent,
@@ -445,9 +352,7 @@ export class PersonalCenterPage extends Component {
     this.scoreValueLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
     this.scoreValueLabel.node.setPosition(-contentW * 0.5 + 32 + 90, -16, 0);
 
-    this.scoreDetailBtn = makeLabelButton('积分详情', {
-      width: 116,
-      height: 42,
+    this.scoreDetailBtn = makeLabelButton('积分详情', 116, 42, {
       fontSize: 17,
       fill: solidColor(UiTheme.mossBtn2),
     });
@@ -472,17 +377,37 @@ export class PersonalCenterPage extends Component {
     }
     this.statPills = [];
 
+    // 基于卡片实际宽度计算 pill 可用区间，避免窄屏下与右侧"积分详情"按钮重叠。
+    // 左侧分数标签右沿 ≈ -W/2 + 212；右侧详情按钮左沿 ≈ W/2 - 140。
+    const cardW = this.scoreCard.getComponent(UITransform)!.width;
+    const zoneLeft = -cardW * 0.5 + 212 + 16;
+    const zoneRight = cardW * 0.5 - 140 - 16;
+    const zoneWidth = Math.max(0, zoneRight - zoneLeft);
+    const pillGap = 14;
+    const pillWidth = Math.max(
+      120,
+      Math.min(220, (zoneWidth - pillGap) / 2),
+    );
+    const pill1X = zoneLeft + pillWidth * 0.5;
+    const pill2X = zoneRight - pillWidth * 0.5;
+
     const pill1 = this.addStatPill(
       this.scoreCard,
       `累计获得 ${totalEarned}`,
-      -20,
+      pill1X,
+      pillWidth,
     );
     const pill2 = this.addStatPill(
       this.scoreCard,
       `已解锁皮肤 ${unlockedCount}/${catSkins.length}`,
-      220,
+      pill2X,
+      pillWidth,
     );
     this.statPills.push(pill1, pill2);
+
+    // 分数 / 已解锁皮肤数变化后同步刷新微信分享卡片文案，
+    // 避免兑换皮肤后还沿用进入页面那一刻的旧数据。
+    this.setupShare();
   }
 
   private buildSkinPanel(parent: Node, contentW: number): number {
@@ -798,9 +723,7 @@ export class PersonalCenterPage extends Component {
     y: number,
     cb: () => void,
   ): Node {
-    const btn = makeLabelButton(text, {
-      width: 92,
-      height: SKIN_CARD_BTN_H,
+    const btn = makeLabelButton(text, 92, SKIN_CARD_BTN_H, {
       fontSize: 16,
       fill: solidColor(fillColor),
     });
@@ -867,9 +790,7 @@ export class PersonalCenterPage extends Component {
     const btnContainer = addNode(popup, 'BtnContainer', 360, 50);
     btnContainer.setPosition(0, -60, 0);
 
-    const cancelBtn = makeLabelButton('取消', {
-      width: 120,
-      height: 44,
+    const cancelBtn = makeLabelButton('取消', 120, 44, {
       fontSize: 18,
       fill: solidColor(new Color(100, 100, 100, 200)),
     });
@@ -881,9 +802,7 @@ export class PersonalCenterPage extends Component {
       }),
     );
 
-    const confirmBtn = makeLabelButton('确认', {
-      width: 120,
-      height: 44,
+    const confirmBtn = makeLabelButton('确认', 120, 44, {
       fontSize: 18,
       fill: solidColor(UiTheme.modalActionBtnFill),
     });
@@ -931,9 +850,7 @@ export class PersonalCenterPage extends Component {
     title.horizontalAlign = Label.HorizontalAlign.LEFT;
     title.node.setPosition(-popupW * 0.5 + 130, popupH * 0.5 - 36, 0);
 
-    const closeBtn = makeLabelButton('关闭', {
-      width: 96,
-      height: 40,
+    const closeBtn = makeLabelButton('关闭', 96, 40, {
       fontSize: 16,
       fill: solidColor(UiTheme.modalActionBtnFill),
     });
@@ -1182,35 +1099,6 @@ export class PersonalCenterPage extends Component {
     return { root, content, scrollView };
   }
 
-  private updateScrollAreaSize(
-    scrollView: ScrollView,
-    viewportW: number,
-    viewportH: number,
-  ): void {
-    const area = this.scrollAreas.find((item) => item.scrollView === scrollView);
-    if (!area) return;
-    scrollView.node.getComponent(UITransform)!.setContentSize(viewportW, viewportH);
-    this.getScrollViewNode(scrollView)
-      ?.getComponent(UITransform)!
-      .setContentSize(viewportW, viewportH);
-    area.viewportHeight = viewportH;
-
-    area.track.getComponent(UITransform)!.setContentSize(4, viewportH - 14);
-    area.track.setPosition(viewportW * 0.5 - 8, 0, 0);
-    const trackG = area.track.getComponent(Graphics)!;
-    trackG.clear();
-    trackG.fillColor = new Color(UiTheme.cream.r, UiTheme.cream.g, UiTheme.cream.b, 40);
-    trackG.roundRect(-2, -(viewportH - 14) * 0.5, 4, viewportH - 14, 2);
-    trackG.fill();
-
-    area.thumb.setPosition(viewportW * 0.5 - 8, area.thumb.position.y, 0);
-    this.updateScrollThumb(area);
-  }
-
-  private getScrollViewNode(scrollView: ScrollView): Node | null {
-    return scrollView.view?.node ?? scrollView.node.getChildByName('view');
-  }
-
   private updateScrollThumb(area: ScrollAreaState): void {
     const contentH = area.content.getComponent(UITransform)!.height;
     const viewportH = Math.max(1, area.viewportHeight);
@@ -1236,17 +1124,25 @@ export class PersonalCenterPage extends Component {
     area.thumbGraphics.fill();
   }
 
-  private addStatPill(parent: Node, text: string, x: number): Node {
-    const pill = addNode(parent, `Pill_${text}`, 210, 46);
+  private addStatPill(
+    parent: Node,
+    text: string,
+    x: number,
+    width = 210,
+  ): Node {
+    const h = 46;
+    const pill = addNode(parent, `Pill_${text}`, width, h);
     pill.setPosition(x, -4, 0);
     paintRoundRect(
       pill.addComponent(Graphics),
-      210,
-      46,
+      width,
+      h,
       new Color(255, 255, 255, 24),
-      23,
+      h * 0.5,
     );
-    addLabel(pill, 'Text', text, 17, UiTheme.cream, 190, 34);
+    const labelW = Math.max(80, width - 20);
+    const label = addLabel(pill, 'Text', text, 17, UiTheme.cream, labelW, 34);
+    label.overflow = Label.Overflow.SHRINK;
     return pill;
   }
 

@@ -293,11 +293,21 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 12. **个人中心独立分包**：`PersonalCenterPage.scene` 已移动到 `assets/personal-center/` 目录，并由 `assets/personal-center.meta` 标记为 Bundle，其中 `userData.compressionType.wechatgame = 'subpackage'`。微信小游戏构建时该场景及其依赖会被打成独立 subpackage，从首包剥离，减小首屏下载体积；运行时由 `assetManager.loadBundle('personal-center')` 按需拉取。
 13. **个人中心 overlay 清理**：`PersonalCenterPage.clearPageChildren` 现在销毁 Canvas 下除 `Camera` 外的所有动态子节点，避免画布尺寸变化时 `ConfirmOverlay`/`HistoryOverlay` 节点泄漏；新增 `destroyOverlay` 在销毁 overlay 的同时把其内部的 ScrollArea 引用从 `scrollAreas` 中移除。
 14. **`scrollAreas` 防御**：`lateUpdate` 中遍历 `scrollAreas` 时跳过 `!isValid` 的节点，并周期性 compact 数组，避免历史弹窗关闭后还残留陈旧引用导致访问已销毁组件抛错。
+15. **共享 UI 原子模块**：抽出 `ui/widgets.ts` 提供 `paintRoundRect / paintModalBackdrop / paintModalPanelBg / paintModalPanelBorder / makeLabelButton / addUiNode / addUiLabel / solidColor` 等工具，`GameController` 与 `PersonalCenterPage` 不再各自维护一份，避免参数默认值漂移。
+16. **个人中心主滚动初始定位**：内容锚点 `(0.5, 1)` 时，`content.position.y` 与内容总高无关，恒定为 `vs.height * 0.5`，修复短内容情况下首屏被下移导致顶部空一截、长内容滚动末段错位的问题。
+17. **积分卡片 stat pill 自适应**：累计获得 / 已解锁皮肤两个 pill 不再使用硬编码 `x = -20 / 220`，改为基于卡片实际宽度计算可用区间，宽度随 `contentW` 收缩并由 `Label.Overflow.SHRINK` 兜底，窄屏不再与"积分详情"按钮重叠。
+18. **登录奖励弹窗统一样式**：`showLoginRewardPopup` 改用 `paintModalPanelBg` / `paintModalPanelBorder` + `MODAL_PANEL_CORNER_RADIUS`，与结算 / 关卡列表弹窗共用底色、描边色与圆角，去掉原先临时的绿色 + 蜂蜜色描边。
+19. **场景路由集中封装**：`sceneRoutes.ts` 新增 `loadMainGameScene` / `loadPersonalCenterScene`，统一处理"主场景直接 loadScene、个人中心走 Bundle，并在 Bundle/scene 加载失败时仅在非微信预览环境回退"，`GameController` / `PersonalCenterPage` 不再自己拼装这套逻辑。
+20. **分享文案自动刷新**：兑换 / 切换皮肤后 `refreshScoreCard` 会重新调用 `setupWechatShare`，避免分享卡片始终显示进入页面那一刻的旧分数与皮肤数。
+21. **`platformKv.decodeWxValue` 仅接受字符串**：旧实现遇到非字符串值会 `JSON.stringify` 二次包装，再被 `JSON.parse` 解出来语义错乱；现改为遇到非 `string` 直接当作不存在，避免双重编码。
+22. **失败积分每日频控**：`ScoreManager` 新增 `addLoseReward`，每日最多入账 10 次（即每日失败最多 +20 分），并在存档新增 `failureRewardDate` / `failureRewardCount` 字段（向后兼容默认 0）；`GameController` 结算文案在达到上限时提示"已达今日失败积分上限"，避免秒输刷分。
+23. **v1 迁移注释**：在 `migrateFromV1` 中显式注明 v1 只存了余额、`totalEarnedScore` 只能按当前余额作为下界，属于历史不可逆数据丢失，对应展示与排行需求按此约定。
+24. **个人中心死代码清理**：删除未被调用的 `updateScrollAreaSize` / `getScrollViewNode`；`BoardView.ts` 移除未使用的 `BatchNode` 引入。
 
 ### 8.3 当前保留限制
 
 1. **皮肤资源仍是占位实现**：当前用色调区分皮肤，后续接入 `assets/images/cat/skins/` 多套动画资源后，应由 `BoardView` 按当前皮肤加载对应帧组。
-2. **失败奖励仍可能被刷**：失败 +2 的规则暂未加入最低游玩时长、每日上限或关卡限制。如果积分经济被打穿，应优先加奖励频控。
+2. **失败奖励限制策略简单**：当前只用"每日入账次数上限（10 次/天）"做频控，没有最低游玩时长或关卡难度门槛。如果出现高级刷分手法（例如自动化挂机失败），需要再叠加最低游戏时长或单局有效输入次数判断。
 3. **积分历史只保留最近记录**：当前只保留最近 50 条流水，用于轻量展示，不作为审计账本。
 4. **微信小游戏分包配置**：个人中心已通过 `assets/personal-center/` 目录的 Bundle 配置打成 wechatgame subpackage，Bundle 名 `personal-center` 由 `sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护。若未来重命名目录或调整 Bundle 名，需同步修改 `assets/personal-center.meta` 中 `userData.bundleName` 和该常量；其他平台默认 `merge_dep`，仅微信走 subpackage。
 5. **主场景状态恢复**：个人中心返回主场景时仍通过 `director.loadScene('scene-001')` 重载主场景，当前依赖进入个人中心前写盘恢复进度。若后续需要无缝回到暂停点，需要引入更完整的运行态保存或覆盖式页面方案。

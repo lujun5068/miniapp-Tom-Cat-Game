@@ -84,6 +84,21 @@
 - 个人中心在不同横屏宽度下更稳定，减少卡片重叠和裁切。
 - 积分流水不占用主页面常驻空间，页面结构更清晰。
 
+## 6. UI 原子组件复用
+
+抽出 `assets/scripts/ui/widgets.ts` 后，主游戏 `GameController`、个人中心 `PersonalCenterPage` 共用同一份 `makeLabelButton` / `paintRoundRect` / `paintModal*` 实现，减少了重复代码体量与冗余 Graphics 节点的不一致绘制开销：
+
+- 圆角按钮使用同一套 lineWidth / cornerRadius / 描边色，避免两边各自维护造成的样式漂移。
+- 模态背景、面板底色、面板描边使用统一调色，渲染状态切换更可预期，对包含多个相同弹窗时的合批更友好。
+- 删除了重复定义的 `LabelButtonOpts`、`defaultBtnCornerRadius`、`paintLabelButtonBg` 等函数，减小了打包后单文件体积。
+
+## 7. 稳定性与状态管理
+
+- `PersonalCenterPage` 内的 `scrollAreas` 在 `lateUpdate` 中跳过失效节点并 compact 数组，避免历史弹窗销毁后仍持有引用导致访问已销毁组件。
+- `clearPageChildren` 销毁 Canvas 下除 `Camera` 外的所有动态子节点，避免反复进入个人中心时累积 overlay 节点。
+- `sceneRoutes.ts` 集中处理主场景与个人中心 Bundle 的加载/回退逻辑；个人中心 Bundle 加载失败时只在非微信预览环境回退到 `director.loadScene`，避免微信环境出现"看似加载但走错路径"的隐式分支。
+- `platformKv.decodeWxValue` 收紧为仅接受字符串，杜绝旧存档被外部写为对象后被 `JSON.stringify` 二次编码造成的语义错乱。
+
 ## 优化结果
 
 通过以上优化措施，游戏的性能得到了显著提升：

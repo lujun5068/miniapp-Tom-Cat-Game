@@ -142,3 +142,9 @@
 | 2026-05-18 | 微信能力：主游戏界面和个人中心页面接入微信分享菜单 |
 | 2026-05-19 | 个人中心分包：场景迁移到 `assets/personal-center/` 并按 wechatgame `subpackage` 打包；`PERSONAL_CENTER_BUNDLE` 改为 `personal-center`；构建 profiles 中 `PersonalCenterPage.scene` 的 URL 同步更新；清掉 `scene.scene` 中残留的 `personalCenter*` 哑序列化字段 |
 | 2026-05-19 | 个人中心稳定性：修复 `clearPageChildren` 仅销毁部分子节点导致的 overlay 节点泄漏；`lateUpdate` 跳过失效 ScrollArea 并周期 compact，避免历史弹窗关闭后访问已销毁组件抛错 |
+| 2026-05-19 | UI 原子收敛：抽出 `ui/widgets.ts`，`GameController` 与 `PersonalCenterPage` 共用 `makeLabelButton / paintRoundRect / paintModal*` 等工具，删除两份重复实现 |
+| 2026-05-19 | 个人中心 UI 微调：主滚动 content 锚点定位修正为固定 `vs.height/2`；积分卡片 stat pill 改为基于 `contentW` 动态计算；登录奖励弹窗改用统一 `UiTheme.modalPanelBg/Border` |
+| 2026-05-19 | 路由统一：`sceneRoutes.ts` 新增 `loadMainGameScene` / `loadPersonalCenterScene`，`GameController` / `PersonalCenterPage` 不再各自拼装 Bundle 加载逻辑 |
+| 2026-05-19 | 分享文案刷新：`PersonalCenterPage.refreshScoreCard` 后会重新 `setupWechatShare`，分享卡片随积分 / 解锁数实时更新 |
+| 2026-05-19 | 失败积分频控：`ScoreManager.addLoseReward` 每日入账上限 10 次（+20 分/天），存档新增 `failureRewardDate/Count`；失败弹窗在达到上限时给出提示文案 |
+| 2026-05-19 | 存储健壮性：`platformKv.decodeWxValue` 只接受字符串，避免遇到非预期类型时被 `JSON.stringify` 二次包装；清理 `PersonalCenterPage.updateScrollAreaSize` 死代码与 `BoardView.ts` 未使用的 `BatchNode` import |

@@ -6,12 +6,10 @@
 import {
   _decorator,
   AudioClip,
-  assetManager,
   BlockInputEvents,
   Button,
   Color,
   Component,
-  director,
   EventKeyboard,
   EventTouch,
   Graphics,
@@ -28,7 +26,6 @@ import {
   input,
   view,
 } from 'cc';
-import { WECHAT } from 'cc/env';
 import { CocosGameAudio } from './audio/CocosGameAudio';
 import { BoardView } from './BoardView';
 import { BASE_TILE_PX } from './GameConstants';
@@ -54,11 +51,16 @@ import { getSafeAreaInsets } from './ui/safeArea';
 import { vibrateLong, vibrateShort } from './storage/wechatVibration';
 import { setupWechatShare } from './storage/wechatShare';
 import { ScoreManager } from './game/ScoreManager';
-import {
-  PERSONAL_CENTER_BUNDLE,
-  PERSONAL_CENTER_SCENE,
-} from './game/sceneRoutes';
+import { loadPersonalCenterScene } from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
+import {
+  defaultBtnCornerRadius,
+  makeLabelButton,
+  paintLabelButtonBg,
+  paintModalBackdrop,
+  paintModalPanelBg,
+  paintModalPanelBorder,
+} from './ui/widgets';
 
 const { ccclass, property } = _decorator;
 
@@ -93,74 +95,6 @@ const UI_EDGE_PAD = 18;
 const LAYOUT_H_PAD = 24;
 
 type MoveIntent = { x: number; y: number };
-
-type LabelButtonOpts = {
-  /** 圆角半径；缺省按高度自适应 */
-  cornerRadius?: number;
-  /** 不透明填充色；缺省为顶栏按钮绿底 */
-  fill?: Color;
-  /** 文字字号；缺省 18 */
-  fontSize?: number;
-  /** 描边色；缺省为弹窗主按钮描边色 */
-  strokeColor?: Color;
-  /** 描边宽度；缺省与弹窗主按钮一致 */
-  strokeWidth?: number;
-};
-
-function paintLabelButtonBg(
-  g: Graphics,
-  w: number,
-  h: number,
-  cornerRadius: number,
-  fill: Color,
-  strokeColor?: Color,
-  strokeWidth?: number,
-): void {
-  g.clear();
-  g.fillColor = fill;
-  g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-  g.fill();
-  g.lineWidth = strokeWidth ?? UiTheme.modalBtnStrokeWidth;
-  g.strokeColor = strokeColor ?? UiTheme.modalBtnStroke;
-  g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-  g.stroke();
-}
-
-function defaultBtnCornerRadius(w: number, h: number): number {
-  return Math.min(12, Math.max(6, Math.floor(Math.min(w, h) * 0.22)));
-}
-
-function paintModalBackdrop(g: Graphics, w: number, h: number): void {
-  g.clear();
-  g.fillColor = UiTheme.modalBackdrop;
-  g.rect(-w * 0.5, -h * 0.5, w, h);
-  g.fill();
-}
-
-function paintModalPanelBg(
-  g: Graphics,
-  w: number,
-  h: number,
-  cornerRadius: number,
-): void {
-  g.clear();
-  g.fillColor = UiTheme.modalPanelBg;
-  g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-  g.fill();
-}
-
-function paintModalPanelBorder(
-  g: Graphics,
-  w: number,
-  h: number,
-  cornerRadius: number,
-): void {
-  g.clear();
-  g.lineWidth = UiTheme.modalPanelBorderWidth;
-  g.strokeColor = UiTheme.modalPanelBorder;
-  g.roundRect(-w * 0.5, -h * 0.5, w, h, cornerRadius);
-  g.stroke();
-}
 
 function mapLinesForPlay(): string[] | null {
   const s = loadLevelSave();
@@ -197,60 +131,6 @@ function resolveMoveIntent(
     else dx = 0;
   }
   return { dx, dy };
-}
-
-function makeLabelButton(
-  text: string,
-  w: number,
-  h: number,
-  opts?: LabelButtonOpts,
-): Node {
-  const corner = opts?.cornerRadius ?? defaultBtnCornerRadius(w, h);
-  const fill =
-    opts?.fill ??
-    new Color(
-      UiTheme.mossPanel.r,
-      UiTheme.mossPanel.g,
-      UiTheme.mossPanel.b,
-      255,
-    );
-
-  const n = new Node(text);
-  const ut = n.addComponent(UITransform);
-  ut.setContentSize(w, h);
-
-  const bg = new Node('BtnBg');
-  bg.addComponent(UITransform).setContentSize(w, h);
-  const gr = bg.addComponent(Graphics);
-  paintLabelButtonBg(
-    gr,
-    w,
-    h,
-    corner,
-    fill,
-    opts?.strokeColor,
-    opts?.strokeWidth,
-  );
-  n.addChild(bg);
-
-  const labNd = new Node('Lbl');
-  labNd.addComponent(UITransform).setContentSize(w, h);
-  const label = labNd.addComponent(Label);
-  label.string = text;
-  label.fontSize = opts?.fontSize ?? 18;
-  label.lineHeight = 20;
-  label.color = UiTheme.cream;
-  label.horizontalAlign = Label.HorizontalAlign.CENTER;
-  label.verticalAlign = Label.VerticalAlign.CENTER;
-  label.overflow = Label.Overflow.CLAMP;
-  n.addChild(labNd);
-
-  const btn = n.addComponent(Button);
-  btn.target = n;
-  btn.transition = Button.Transition.SCALE;
-  btn.zoomScale = 0.94;
-  btn.duration = 0.08;
-  return n;
 }
 
 @ccclass('GameController')
@@ -1736,8 +1616,12 @@ export class GameController extends Component {
             : '积分 +5',
         );
       } else {
-        // 发放积分
-        this.scoreManager.addScore(2, '游戏失败');
+        // 失败积分有每日次数上限，超过后静默不发，并在弹窗里告知玩家
+        const granted = this.scoreManager.addLoseReward(2, '游戏失败');
+        const scoreText =
+          granted > 0
+            ? `积分 +${granted}`
+            : '已达今日失败积分上限，本次不再发放';
 
         this.gameAudio.playLose();
         vibrateLong();
@@ -1746,7 +1630,7 @@ export class GameController extends Component {
           this.sim.level,
           this.sim.timeLeft,
           false,
-          '积分 +2',
+          scoreText,
         );
       }
       this.syncRunBtn();
@@ -1834,31 +1718,34 @@ export class GameController extends Component {
     paintModalBackdrop(bdG, vs.width, vs.height);
     root.addChild(backdrop);
 
+    const panelW = 400;
+    const panelH = 250;
     const panel = new Node('LoginRewardPopup');
     const pUt = panel.addComponent(UITransform);
-    pUt.setContentSize(400, 250);
+    pUt.setContentSize(panelW, panelH);
     const pW = panel.addComponent(Widget);
     pW.isAlignHorizontalCenter = true;
     pW.isAlignVerticalCenter = true;
     root.addChild(panel);
 
     const panelBgNode = new Node('PanelBg');
-    panelBgNode.addComponent(UITransform).setContentSize(400, 250);
-    const pbgG = panelBgNode.addComponent(Graphics);
-    pbgG.clear();
-    pbgG.fillColor = new Color(50, 100, 50, 240);
-    pbgG.roundRect(-200, -125, 400, 250, 20);
-    pbgG.fill();
+    panelBgNode.addComponent(UITransform).setContentSize(panelW, panelH);
+    paintModalPanelBg(
+      panelBgNode.addComponent(Graphics),
+      panelW,
+      panelH,
+      MODAL_PANEL_CORNER_RADIUS,
+    );
     panel.addChild(panelBgNode);
 
     const panelBorderNode = new Node('PanelBorder');
-    panelBorderNode.addComponent(UITransform).setContentSize(400, 250);
-    const pbdG = panelBorderNode.addComponent(Graphics);
-    pbdG.clear();
-    pbdG.lineWidth = 3;
-    pbdG.strokeColor = UiTheme.honey;
-    pbdG.roundRect(-200, -125, 400, 250, 20);
-    pbdG.stroke();
+    panelBorderNode.addComponent(UITransform).setContentSize(panelW, panelH);
+    paintModalPanelBorder(
+      panelBorderNode.addComponent(Graphics),
+      panelW,
+      panelH,
+      MODAL_PANEL_CORNER_RADIUS,
+    );
     panel.addChild(panelBorderNode);
 
     const title = this.addCenterLabel(
@@ -1907,60 +1794,7 @@ export class GameController extends Component {
     this.gameAudio.pauseBgm();
     this.syncRunBtn();
     saveProgressToDisk(this.sim);
-    this.loadPersonalCenterFromBundle();
-  }
-
-  private loadPersonalCenterFromBundle(): void {
-    const bundleName = PERSONAL_CENTER_BUNDLE;
-    const sceneName = PERSONAL_CENTER_SCENE;
-    if (!bundleName) {
-      console.error('[GameController] personal center bundle name is empty');
-      if (!WECHAT) {
-        console.warn(
-          `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
-        );
-        director.loadScene(sceneName);
-      }
-      return;
-    }
-
-    console.log(
-      `[GameController] load bundle scene: bundle=${bundleName}, scene=${sceneName}`,
-    );
-    assetManager.loadBundle(bundleName, (bundleError, bundle) => {
-      if (bundleError || !bundle) {
-        console.error(
-          `[GameController] load bundle failed: ${bundleName}`,
-          bundleError,
-        );
-        if (!WECHAT) {
-          console.warn(
-            `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
-          );
-          director.loadScene(sceneName);
-        }
-        return;
-      }
-      bundle.loadScene(sceneName, (sceneError, sceneAsset) => {
-        if (sceneError || !sceneAsset) {
-          console.error(
-            `[GameController] load scene from bundle failed: bundle=${bundleName}, scene=${sceneName}`,
-            sceneError,
-          );
-          if (!WECHAT) {
-            console.warn(
-              `[GameController] fallback to director.loadScene in non-WeChat preview: ${sceneName}`,
-            );
-            director.loadScene(sceneName);
-          }
-          return;
-        }
-        console.log(
-          `[GameController] run bundle scene: bundle=${bundleName}, scene=${sceneName}`,
-        );
-        director.runScene(sceneAsset);
-      });
-    });
+    loadPersonalCenterScene();
   }
 
   private applyCurrentCatSkin(): void {

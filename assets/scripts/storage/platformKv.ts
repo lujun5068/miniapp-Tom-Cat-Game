@@ -18,15 +18,14 @@ function getWx(): WxStorage | null {
   return wx;
 }
 
+/**
+ * `wx.getStorageSync` 写入字符串时返回字符串，读取到非预期类型时（例如旧数据被外部写成
+ * 对象）就当作不存在处理，避免后续 `JSON.stringify` 把对象包成"看起来像 JSON 的字符串"
+ * 再次被 `JSON.parse` 解出来，造成数据语义不一致。
+ */
 function decodeWxValue(raw: unknown): string | null {
-  if (raw === null || raw === undefined) return null;
-  if (raw === '') return null;
-  if (typeof raw === 'string') return raw;
-  try {
-    return JSON.stringify(raw);
-  } catch {
-    return null;
-  }
+  if (typeof raw !== 'string' || raw === '') return null;
+  return raw;
 }
 
 export function storageGetItem(key: string): string | null {

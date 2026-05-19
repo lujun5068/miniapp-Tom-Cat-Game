@@ -38,7 +38,7 @@ assets/
     audio/               Cocos 音频封装
     render/              地图贴图配置
     storage/             关卡存档、跨端存储、微信分享封装
-    ui/                  UI 主题与安全区适配
+    ui/                  UI 主题、安全区适配与共享按钮/面板 widget（widgets.ts）
     visual/              猫动画播放
 settings/                Cocos Creator 项目设置
 package.json             Cocos Creator 项目信息
@@ -76,14 +76,18 @@ tsconfig.json            TypeScript 配置
 - 管理背景音乐和音效的播放
 
 #### 2.2.6 积分与皮肤模块
-- `ScoreManager` 负责每日登录、胜负结算、破纪录奖励、皮肤兑换、当前皮肤和积分流水。
+- `ScoreManager` 负责每日登录、胜负结算、破纪录奖励、皮肤兑换、当前皮肤和积分流水；失败积分通过 `addLoseReward` 接口走每日次数频控（默认每日 10 次/+20 分）。
 - `skinConfig` 定义皮肤 ID、名称、价格、描述、默认标记和当前阶段的视觉色调。
 - 默认皮肤始终可用；非默认皮肤通过积分兑换后可切换。
 
 #### 2.2.7 页面与微信能力
 - `PersonalCenterPage` 是独立场景页面，便于微信小游戏 Bundle/分包。
-- `sceneRoutes.ts` 统一维护主场景、个人中心场景和 Bundle 名。
-- `wechatShare.ts` 封装微信分享菜单、会话分享和朋友圈分享。
+- `sceneRoutes.ts` 统一维护主场景、个人中心场景与 Bundle 名，并提供 `loadMainGameScene` / `loadPersonalCenterScene` 封装，避免业务代码直接调用 `assetManager.loadBundle`。
+- `wechatShare.ts` 封装微信分享菜单、会话分享和朋友圈分享；个人中心积分卡片刷新时会重新调用以同步分享文案。
+
+#### 2.2.8 UI 原子组件
+- `ui/widgets.ts` 提供 `makeLabelButton`、`paintRoundRect`、`paintModalBackdrop`、`paintModalPanelBg`、`paintModalPanelBorder`、`addUiNode`、`addUiLabel`、`solidColor` 等工具。
+- `GameController`、`PersonalCenterPage` 共用同一份实现，避免按钮、弹窗在两边出现默认值漂移。
 
 ## 3. 核心功能实现
 
@@ -130,7 +134,7 @@ tsconfig.json            TypeScript 配置
 #### 3.2.3 游戏结束界面
 - 显示游戏结果（胜利/失败）
 - 显示剩余时间
-- 显示本局积分变化，例如通关 +5、失败 +2、破纪录额外 +10
+- 显示本局积分变化，例如通关 +5、失败 +2、破纪录额外 +10；失败积分达到当日上限时改为"已达今日失败积分上限，本次不再发放"
 - 提供重玩和下一关按钮
 
 #### 3.2.4 个人中心页面
