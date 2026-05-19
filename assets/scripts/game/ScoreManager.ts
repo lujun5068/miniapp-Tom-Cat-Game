@@ -31,6 +31,8 @@ type ScoreSaveV2 = {
   failureRewardDate: string;
   /** 当日失败积分入账次数；达到 DAILY_LOSE_CAP_COUNT 后停止发放 */
   failureRewardCount: number;
+  /** 当日分享奖励入账日期（本地 YYYY-MM-DD），用于按天判定是否已发放 */
+  shareRewardDate: string;
 };
 
 const KEY = 'cat-game-score-v1';
@@ -39,6 +41,8 @@ const DEFAULT_SKIN_ID = 'default';
 const DAILY_LOGIN_REWARD = 10;
 /** 每日失败积分入账次数上限（按 +2/次 即每日失败最多额外 +20 分） */
 const DAILY_LOSE_CAP_COUNT = 10;
+/** 分享奖励：每日最多 1 次 +10 积分 */
+const DAILY_SHARE_REWARD = 10;
 
 const defaultSave = (): ScoreSaveV2 => ({
   version: 2,
@@ -51,6 +55,7 @@ const defaultSave = (): ScoreSaveV2 => ({
   history: [],
   failureRewardDate: '',
   failureRewardCount: 0,
+  shareRewardDate: '',
 });
 
 export type DailyLoginRewardResult = {
@@ -115,6 +120,7 @@ export class ScoreManager {
         history: this.sanitizeHistory(saved.history),
         failureRewardDate: this.sanitizeDate(saved.failureRewardDate),
         failureRewardCount: this.sanitizeScore(saved.failureRewardCount),
+        shareRewardDate: this.sanitizeDate(saved.shareRewardDate),
       };
       if (this.saveData.totalEarnedScore < this.saveData.availableScore) {
         this.saveData.totalEarnedScore = this.saveData.availableScore;
@@ -151,6 +157,7 @@ export class ScoreManager {
       history: [],
       failureRewardDate: '',
       failureRewardCount: 0,
+      shareRewardDate: '',
     };
   }
 
@@ -242,6 +249,29 @@ export class ScoreManager {
       0,
       DAILY_LOSE_CAP_COUNT - this.saveData.failureRewardCount,
     );
+  }
+
+  /**
+   * 分享奖励：玩家发起一次微信分享即可获得 DAILY_SHARE_REWARD 积分，
+   * 每日仅入账 1 次，跨日自动重置。返回值是实际入账积分（0 表示当日已发放过）。
+   *
+   * 注意：调用入口（如 `setupWechatShare.onShareSuccess` 回调）每次分享可能触发多次
+   * （onShareAppMessage 与 onShareTimeline 都会回调），但本方法是幂等的：
+   * 同一天内只会入账一次，重复调用直接返回 0，无需上层去重。
+   */
+  public addShareReward(reason = '分享游戏'): number {
+    const today = this.localDateString();
+    if (this.saveData.shareRewardDate === today) {
+      return 0;
+    }
+    this.saveData.shareRewardDate = today;
+    this.addScore(DAILY_SHARE_REWARD, reason);
+    return DAILY_SHARE_REWARD;
+  }
+
+  /** 当日是否还可领取分享奖励，便于 UI 文案区分"分享 +10"或"今日已领取" */
+  public canClaimShareRewardToday(): boolean {
+    return this.saveData.shareRewardDate !== this.localDateString();
   }
 
   public getTotalScore(): number {

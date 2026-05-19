@@ -33,7 +33,19 @@ const PAGE_MAX_WIDTH = 1080;
 const PAGE_H_PAD = 36;
 const HEADER_TOP = 22;
 const SCORE_CARD_TOP = 82;
-const BODY_TOP = 210;
+/** 积分卡片高度；包含底部"分享获额外积分"提示一行 */
+const SCORE_CARD_HEIGHT = 144;
+/**
+ * 积分卡片主行（分数 / 详情按钮 / stat pill）的纵向锚点。
+ * 卡片高度从 104 升到 144 后向上让出底部 40px 用于放分享提示文案；
+ * 主行整体相对新中心上抬 20，使原本"看起来在卡片顶部 + 中部"的元素视觉位置不变。
+ */
+const SCORE_CARD_MAIN_ROW_Y = 16;
+const SCORE_CARD_TITLE_Y = 42;
+const SCORE_CARD_VALUE_Y = 4;
+/** 分享提示文案 y 坐标（卡片中心向下偏移），距卡片底部约 14px */
+const SCORE_CARD_HINT_Y = -50;
+const BODY_TOP = SCORE_CARD_TOP + SCORE_CARD_HEIGHT + 24;
 const MIN_CONTENT_WIDTH = 760;
 const SKIN_GRID_MAX_COLUMNS = 4;
 const SKIN_GRID_MIN_CARD_W = 172;
@@ -125,6 +137,7 @@ export class PersonalCenterPage extends Component {
   private scoreCard: Node | null = null;
   private scoreValueLabel: Label | null = null;
   private scoreDetailBtn: Node | null = null;
+  private scoreShareHintLabel: Label | null = null;
   private statPills: Node[] = [];
   private confirmPopup: Node | null = null;
   private historyPopup: Node | null = null;
@@ -232,6 +245,18 @@ export class PersonalCenterPage extends Component {
     setupWechatShare({
       title: `我在 Tom Cat 已有 ${score} 积分，解锁了 ${unlockedCount} 个皮肤！`,
       query: 'from=personal-center',
+      onShareSuccess: (channel) => {
+        // 分享 +10 积分，每日仅 1 次。无论主游戏还是个人中心入口，
+        // 用同一份 ScoreManager 存档判定；入账成功后立即刷新积分卡片。
+        const got = this.scoreManager.addShareReward(
+          channel === 'timeline'
+            ? '分享朋友圈 · 个人中心'
+            : '分享游戏 · 个人中心',
+        );
+        if (got > 0) {
+          this.refreshScoreCard();
+        }
+      },
     });
   }
 
@@ -289,6 +314,7 @@ export class PersonalCenterPage extends Component {
     this.scoreCard = null;
     this.scoreValueLabel = null;
     this.scoreDetailBtn = null;
+    this.scoreShareHintLabel = null;
     this.statPills = [];
     this.confirmPopup = null;
     this.historyPopup = null;
@@ -324,7 +350,7 @@ export class PersonalCenterPage extends Component {
       parent,
       'ScoreCard',
       contentW,
-      104,
+      SCORE_CARD_HEIGHT,
       SCORE_CARD_TOP,
       18,
     );
@@ -338,7 +364,7 @@ export class PersonalCenterPage extends Component {
       28,
     );
     title.horizontalAlign = Label.HorizontalAlign.LEFT;
-    title.node.setPosition(-contentW * 0.5 + 32 + 90, 22, 0);
+    title.node.setPosition(-contentW * 0.5 + 32 + 90, SCORE_CARD_TITLE_Y, 0);
 
     this.scoreValueLabel = addLabel(
       this.scoreCard,
@@ -350,16 +376,39 @@ export class PersonalCenterPage extends Component {
       48,
     );
     this.scoreValueLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
-    this.scoreValueLabel.node.setPosition(-contentW * 0.5 + 32 + 90, -16, 0);
+    this.scoreValueLabel.node.setPosition(
+      -contentW * 0.5 + 32 + 90,
+      SCORE_CARD_VALUE_Y,
+      0,
+    );
 
     this.scoreDetailBtn = makeLabelButton('积分详情', 116, 42, {
       fontSize: 17,
       fill: solidColor(UiTheme.mossBtn2),
     });
-    this.scoreDetailBtn.setPosition(contentW * 0.5 - 82, -4, 0);
+    this.scoreDetailBtn.setPosition(
+      contentW * 0.5 - 82,
+      SCORE_CARD_MAIN_ROW_Y,
+      0,
+    );
     this.scoreCard.addChild(
       this.wrapBtn(this.scoreDetailBtn, () => this.showHistoryPopup()),
     );
+
+    // 底部一行分享提示。文案随当日是否已领取分享奖励切换：
+    // 未领取 → 引导分享；已领取 → 告知次日可再次领取。
+    this.scoreShareHintLabel = addLabel(
+      this.scoreCard,
+      'ScoreShareHint',
+      '',
+      14,
+      UiTheme.muted,
+      Math.max(240, contentW - 64),
+      22,
+    );
+    this.scoreShareHintLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+    this.scoreShareHintLabel.overflow = Label.Overflow.SHRINK;
+    this.scoreShareHintLabel.node.setPosition(0, SCORE_CARD_HINT_Y, 0);
 
     this.refreshScoreCard();
   }
@@ -404,6 +453,12 @@ export class PersonalCenterPage extends Component {
       pillWidth,
     );
     this.statPills.push(pill1, pill2);
+
+    if (this.scoreShareHintLabel) {
+      this.scoreShareHintLabel.string = this.scoreManager.canClaimShareRewardToday()
+        ? '每日将游戏分享给微信好友或群聊可获得额外积分奖励！'
+        : '今日分享奖励已领取，明天再来分享可继续获得 +10';
+    }
 
     // 分数 / 已解锁皮肤数变化后同步刷新微信分享卡片文案，
     // 避免兑换皮肤后还沿用进入页面那一刻的旧数据。
@@ -1132,7 +1187,8 @@ export class PersonalCenterPage extends Component {
   ): Node {
     const h = 46;
     const pill = addNode(parent, `Pill_${text}`, width, h);
-    pill.setPosition(x, -4, 0);
+    // 与积分卡片主行（详情按钮）共用同一纵向锚点，避免卡片加高后 pill 仍贴在卡片中线。
+    pill.setPosition(x, SCORE_CARD_MAIN_ROW_Y, 0);
     paintRoundRect(
       pill.addComponent(Graphics),
       width,

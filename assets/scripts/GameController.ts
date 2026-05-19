@@ -318,6 +318,15 @@ export class GameController extends Component {
     setupWechatShare({
       title: '来帮 Tom 抓住这群狡猾的杰瑞！',
       query: 'from=game',
+      onShareSuccess: (channel) => {
+        // 分享 +10 积分，每日仅 1 次，超过当日额度直接返回 0
+        const got = this.scoreManager.addShareReward(
+          channel === 'timeline' ? '分享朋友圈' : '分享游戏',
+        );
+        if (got > 0) {
+          console.log(`[GameController] 分享奖励入账 +${got}`);
+        }
+      },
     });
     this.sim = new GameSimulation();
     const s = loadLevelSave();

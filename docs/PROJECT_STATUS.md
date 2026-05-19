@@ -151,3 +151,4 @@
 | 2026-05-19 | ScoreManager 构造副作用拆分：构造函数只做 `loadFromDisk`，每日登录奖励由 `claimDailyLoginRewardIfNeeded` 显式接口提供，主游戏 `GameController.onLoad` 调用；工具脚本只读访问不再触发发奖与写盘 |
 | 2026-05-19 | 资源清理：删除遗留场景 `assets/scene.scene` 及其 meta（启动场景始终是 `scene-001.scene`，由 `settings/v2/packages/scene.json` 指定），同步更新 README 与 `docs/DESIGN_DOC.html` 中的项目结构示意 |
 | 2026-05-19 | 文档校准：`DESIGN_DOC.md` §5 改为"已完成 / 进行中 / 待办"分类的路线图；`INTEGRATION_SYSTEM_DESIGN.md` §3 / §8 同步 ScoreManager 构造拆分、个人中心独立 Bundle 现状与历史措辞清理；`PERFORMANCE_OPTIMIZATION.md` 个人中心收益明确为定性结论，新增 profiler 实测数据 TODO 表格 |
+| 2026-05-19 | 分享奖励：`ScoreManager.addShareReward` 提供每日 1 次 +10 积分入账（存档新增 `shareRewardDate`），`wechatShare.setupWechatShare` 扩展 `onShareSuccess(channel)` 回调，主游戏与个人中心入口均接入；个人中心入账后立即 `refreshScoreCard` 同步 UI |

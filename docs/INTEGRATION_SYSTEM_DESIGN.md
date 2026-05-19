@@ -9,8 +9,9 @@
 ### 2.1 积分获取方式
 - **每日登录**：+10 积分
 - **游戏成功过关**：+5 积分
-- **游戏失败**：+2 积分
+- **游戏失败**：+2 积分（每日最多入账 10 次，详见 §3.2.1 `addLoseReward`）
 - **破关卡记录**：+10 积分
+- **微信分享**：+10 积分（每日仅 1 次，详见 §3.2.1 `addShareReward`）
 
 ### 2.2 积分使用
 - 积分用于兑换猫角色的皮肤
@@ -40,6 +41,7 @@ export type ScoreSaveV2 = {
   history: ScoreHistoryEntry[]; // 最近积分流水
   failureRewardDate: string;    // 当日失败积分入账日期，跨日重置
   failureRewardCount: number;   // 当日失败积分入账次数，达到上限后不再发放
+  shareRewardDate: string;      // 当日分享奖励入账日期；与今日相同代表今天已发过
 };
 ```
 
@@ -112,6 +114,7 @@ export const catSkins: CatSkin[] = [
 - 日期判断使用本地 `YYYY-MM-DD`，避免 UTC 日期导致每日登录奖励在北京时间早上 8 点切换。
 - 积分分为 `availableScore`（可用积分）和 `totalEarnedScore`（累计获得积分）。
 - 失败积分通过 `addLoseReward(amount, reason)` 入账，每日次数上限 10 次（即每日失败最多 +20 分），跨日自动重置。
+- 分享积分通过 `addShareReward(reason?)` 入账，固定 +10 / 每日 1 次，跨日自动重置；多次回调（朋友 + 朋友圈）幂等无副作用。
 - 最近积分流水保留在 `history` 中，目前最多保存 50 条。
 - 默认皮肤始终视为已解锁；非默认皮肤可兑换、切换，当前阶段使用 `visualTint` 做可见区分。
 
@@ -123,6 +126,8 @@ scoreManager.claimDailyLoginRewardIfNeeded();    // 由 GameController.onLoad �
 scoreManager.addScore(amount, reason);           // 通用入账
 scoreManager.addLoseReward(amount, reason);      // 失败积分专用，带每日次数频控
 scoreManager.getLoseRewardRemainingToday();      // 当日失败积分剩余次数
+scoreManager.addShareReward(reason?);            // 分享奖励 +10，每日 1 次，幂等
+scoreManager.canClaimShareRewardToday();         // 当日是否还可领取分享奖励
 scoreManager.getTotalScore();
 scoreManager.getTotalEarnedScore();
 scoreManager.getScoreHistory();
@@ -209,6 +214,8 @@ if (this.sim.gameEnd !== 'none' && !this.endModalShown) {
 - 主游戏分享文案强调捕鼠闯关。
 - 个人中心分享文案包含当前积分与已解锁皮肤数量。
 - 支持 `showShareMenu`、`onShareAppMessage`、`onShareTimeline`。
+- `setupWechatShare({ ..., onShareSuccess })` 接受一个回调，参数为 `'message' | 'timeline'`，在微信触发分享回调时被调用一次；主游戏 / 个人中心都把它接到 `ScoreManager.addShareReward`，实现"分享 +10 / 每日 1 次"奖励。
+- `addShareReward` 内部按日期幂等，所以即便用户连续点击"分享给朋友"和"分享到朋友圈"也只会发一次；个人中心入口在成功入账后会立刻 `refreshScoreCard()` 让 UI 同步。
 
 ## 4. 皮肤系统实现
 
@@ -301,6 +308,7 @@ configureCatFrameAnimations(opts: CatFrameAnimationsOpts): void {
 24. **个人中心死代码清理**：删除未被调用的 `updateScrollAreaSize` / `getScrollViewNode`；`BoardView.ts` 移除未使用的 `BatchNode` 引入。
 25. **ScoreManager 构造副作用拆分**：构造函数只做 `loadFromDisk`，原 `checkDailyLogin` 改为公开方法 `claimDailyLoginRewardIfNeeded`，由 `GameController.onLoad` 显式调用。这样测试 / 工具脚本只读访问 `ScoreManager.getInstance()` 不再触发"加积分 + 写盘"，避免对真实玩家存档造成误写。
 26. **删除遗留场景文件**：清掉 `assets/scene.scene` 及其 meta（启动场景始终是 `scene-001.scene`，对应 `settings/v2/packages/scene.json` 的 `current-scene` UUID），同时同步 README / DESIGN_DOC.html 中的项目结构示意。
+27. **微信分享积分**：`ScoreManager` 新增 `addShareReward(reason?)`（每日 1 次 +10，幂等）与 `canClaimShareRewardToday()`；存档新增 `shareRewardDate` 字段。`wechatShare.setupWechatShare` 扩展出 `onShareSuccess(channel)` 回调，主游戏与个人中心入口都接进来；个人中心入账后会立刻 `refreshScoreCard()` 让 UI 同步。
 
 ### 8.3 当前保留限制
 

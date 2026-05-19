@@ -6,6 +6,17 @@ type SharePayload = {
   query?: string;
 };
 
+export type ShareChannel = 'message' | 'timeline';
+
+export type SetupWechatShareOptions = SharePayload & {
+  /**
+   * 分享回调被微信触发时调用一次，用于发奖等业务副作用。
+   * 注意 onShareAppMessage / onShareTimeline 都会触发，可能在同一次操作中调用多次；
+   * 上层（如 ScoreManager.addShareReward）需要自行做幂等 / 频控。
+   */
+  onShareSuccess?: (channel: ShareChannel) => void;
+};
+
 type WxShareApi = {
   showShareMenu?(opts?: {
     withShareTicket?: boolean;
@@ -26,9 +37,11 @@ function getWx(): WxShareApi | null {
   return wx;
 }
 
-export function setupWechatShare(payload: SharePayload): void {
+export function setupWechatShare(opts: SetupWechatShareOptions): void {
   const wx = getWx();
   if (!wx) return;
+
+  const { onShareSuccess, ...payload } = opts;
 
   try {
     wx.showShareMenu?.({
@@ -49,14 +62,32 @@ export function setupWechatShare(payload: SharePayload): void {
   }
 
   try {
-    wx.onShareAppMessage?.(() => payload);
+    wx.onShareAppMessage?.(() => {
+      safeInvokeShareCallback(onShareSuccess, 'message');
+      return payload;
+    });
   } catch {
     /* ignore */
   }
 
   try {
-    wx.onShareTimeline?.(() => payload);
+    wx.onShareTimeline?.(() => {
+      safeInvokeShareCallback(onShareSuccess, 'timeline');
+      return payload;
+    });
   } catch {
     /* ignore */
+  }
+}
+
+function safeInvokeShareCallback(
+  cb: ((channel: ShareChannel) => void) | undefined,
+  channel: ShareChannel,
+): void {
+  if (!cb) return;
+  try {
+    cb(channel);
+  } catch (error) {
+    console.warn('[wechatShare] onShareSuccess callback threw', error);
   }
 }
