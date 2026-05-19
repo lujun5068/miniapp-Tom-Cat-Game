@@ -1,154 +1,128 @@
-# 猫捕鼠冠军Tom · 小游戏设计文档
+# 项目状态 · 路线图 · 发布自检
 
-**引擎版本：** Cocos Creator **3.8.8**  
-**文档更新说明：** 由开发过程整理；后续请在迭代时同步更新「已办 / 待办」。
-
----
-
-## 一、环境与仓库
-
-| 项 | 说明 |
-|----|------|
-| 工程路径 | `Tom-cat-game/Cocos-Tom_Cat/` |
-| 目标平台 | 微信小游戏（最低基础库策略另见产品配置，建议 ≥ 3.1.x） |
-| 脚本目录 | `assets/scripts/` |
+> 描述当前项目状态、迭代路线图与发布前自检；变更历史请见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ---
 
-## 二、已办事项
+## 1. 路线图（按 已完成 / 进行中 / 待办 分类）
 
-### 2.1 核心玩法（与网页版逻辑对齐）
+每条尽量给出涉及的文件 / 模块，便于读者快速定位。  
+**进行中**：代码已起步但还需要再投入；**待办**：尚未开工的预案。
 
-- [x] 地图：`demoMap`（14×14 演示关）、`Grid.fromLines`（`#` / `.`）
-- [x] 规则：`evalJump`、`evalAttack`、`catchMice`、眩晕时长等
-- [x] 模拟：`GameSimulation`（计时、老鼠步进间隔随关卡、移动/跳/扑、胜负判定）
-- [x] 生成：`spawnEntities`（猫鼠最小距离等）
-- [x] AI：`stepAllMiceAwayFromCat`（BFS 距离场共用）
-- [x] 关卡元数据：`MAX_LEVELS`、`MAX_MICE`、`mouseCountForLevel` 等
+### 1.1 游戏内容
 
-### 2.2 存档与进度
+#### 已完成
+- 皮肤系统骨架：`game/skinConfig.ts` 定义皮肤元数据，`ScoreManager` 负责解锁 / 切换；当前阶段用 `visualTint` 区分外观。
+- 关卡限时 + 难度梯度：每关 30 秒、关卡上限 30 关、老鼠数量与步进随关卡递增（`GameSimulation`）。
 
-- [x] `levelSave`：键 `cat-game-level-v1`；读写经 `storage/platformKv`（编辑器 / 浏览器用 `sys.localStorage`，**微信小游戏**用 `wx.setStorageSync` 等）
-- [x] `gameSession`：内存态与本局最佳、解锁关合并逻辑
-- [x] `progress.ts`：`getEffectiveMaxUnlockedLevel`、`saveProgressToDisk`、`resetProgressOnDisk`
-- [x] 结算弹窗 **× 关闭**：胜利时写盘并静默重置本关（与网页版 `bindEndModal` 行为一致）
-- [x] `ScoreManager`：积分 v2 本地存档、每日登录奖励、胜负/破纪录奖励、皮肤兑换、当前皮肤和最近积分流水
+#### 进行中
+- 皮肤美术资源接入：`assets/images/cat/skins/` 多套动画帧待补齐，`BoardView` 中按当前皮肤加载对应帧组的分支等资源就位再接（参考 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4）。
 
-### 2.3 表现层
+#### 待办
+- 新关卡形式：特殊地图元素（传送门 / 陷阱）、Boss 关卡。
+- 角色技能：加速 / 范围攻击等；带不同行为模式的老鼠。
+- 新增模式：无尽 / 时间挑战 / 多人对战。
 
-- [x] `BoardView`：障碍/空地（`Graphics` 色块 **或** 四张地图 `SpriteFrame` 齐全时精灵铺格）；猫 / 鼠（圆点 **或** `sfCat` / `sfMouse`）；老鼠支持 **`sfMouseVertical`** 纵向贴图、**`mouseSpriteScale`** 显示缩放，位移时朝向与 `BoardView.drawEntities` 内翻转逻辑对齐
-- [x] `CatMotionAnimator`：行走/跳/扑补间（坐标系与棋盘居中、Y 向上）
-- [x] `GameConstants.BASE_TILE_PX = 40`（对齐原网页 `TILE`）
+### 1.2 技术与稳定性
 
-### 2.4 UI 与流程（运行时动态搭建）
+#### 已完成
+- 代码模块化：`ui/widgets.ts` 共享 UI 原子；`game/sceneRoutes.ts` 集中场景跳转；积分系统集中在 `game/ScoreManager.ts` 并按职责拆出 `addLoseReward` / `claimDailyLoginRewardIfNeeded` / `addShareReward` 显式接口。
+- 资源异步加载与首屏瘦身：个人中心通过 `assets/personal-center/` Bundle 打成 wechatgame subpackage，由 `assetManager.loadBundle` 按需拉取。
+- 跨平台存储：`storage/platformKv.ts` 适配 `wx.*StorageSync` 与 `sys.localStorage`，`decodeWxValue` 严格只接受字符串，杜绝二次编码。
+- BoardView 对象池：`spritePool` / `mousePool` 复用节点，关卡切换不再频繁创建销毁。
 
-- [x] 侧栏：左侧音乐·开/关、音效·开/关、个人中心；右侧开始/暂停、下一关、**全部关卡**（已移除「重置进度」入口；`progress.resetProgressOnDisk` 仍保留供将来或调试使用）
-- [x] HUD：关卡、剩余时间、本关最佳、眩晕提示
-- [x] 操作提示文案（键盘 + 摇杆 + 按钮）
-- [x] 虚拟摇杆 + **圆形**跳跃 / 攻击按钮
-- [x] 键盘：WASD / 方向键移动，空格跳跃，J 扑击
-- [x] 胜负弹窗：标题/副标题、积分变化、重玩、下一关、关闭逻辑；**失败时仅重玩且行动条收窄居中**；结算 / 选关弹窗统一 `UiTheme` 高对比遮罩与面板描边（`MODAL_PANEL_*`、`paintModal*`）
-- [x] 选关弹窗：1–30 网格；**面板宽度** `MODAL_LEVELS_PANEL_WIDTH` 与内边距下**动态格宽**防溢出；已解锁 / 未解锁底色与数字色区分（`levelPickLocked*`）
-- [x] `UiTheme` 配色 + 安全区 `Widget` 边距 + 可选全屏 `sfUiBg`（与 3.2 对齐 H5 观感）
-- [x] `GameController` 文件头注释：在 **Canvas** 上挂载本组件即可预览
-- [x] `PersonalCenterPage`：独立个人中心场景，展示积分卡片、皮肤商店和积分流水详情弹窗；皮肤网格按宽度自适应，默认最多 4 列
+#### 进行中
+- 性能数据采集：目前性能改造以定性结论为主，缺少 profiler 实测数据（见下方 §3 性能追踪 TODO）。
+- 失败积分反作弊：每日次数频控已上线，更进一步的最低游戏时长 / 单局有效输入次数策略待评估。
 
-### 2.5 音频（`AudioSource` + 本地设置）
+#### 待办
+- 单元测试与回归：`GameSimulation` / `ScoreManager` 等纯逻辑可优先补 Jest / Vitest 风格的单测，目前仓库无测试目录。
+- 渲染深度优化：精灵图集、纹理压缩、自定义 shader、LOD 系统、资源预加载等长期备选，目前未观察到瓶颈。
+- 多端适配：iOS / Android / PC 客户端目前未单独打包，仅 H5 / 微信小游戏路径走过。
 
-- [x] `storage/audioSettings.ts`：与网页版相同 key `cat-game-audio-v1`；读写经 `storage/platformKv`（微信 `wx` 同步存储 / 否则 `sys.localStorage`）
-- [x] `audio/CocosGameAudio.ts`：子节点双 `AudioSource`（BGM 循环 + SFX `playOneShot`）
-- [x] `GameController`：Inspector 中 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 等槽位绑定 `AudioClip`
-- [x] 顶栏切换音乐/音效、文案同步；首次触摸/按键解锁播放；对局 BGM 与暂停/胜负暂停；`setSoundHooks`、倒计时滴答、胜负音效、UI 点击音
-- [x] **资源入库**：已导入 **`.m4a`** 音频并由 Creator 生成 `AudioClip`，在 **GameController** 各 `clip*` 上完成绑定即可（与网页版音效一一对应即可，扩展名不必相同）。
+### 1.3 用户体验
 
----
+#### 已完成
+- 弹窗（结算 / 关卡列表 / 登录奖励）共用 `UiTheme.modalPanelBg / Border + MODAL_PANEL_CORNER_RADIUS`。
+- 微信分享：主游戏 + 个人中心接入 `wechatShare.ts`；个人中心刷新积分后会重新调用 `setupWechatShare` 同步分享文案。
+- 个人中心 UI 细节：积分卡片 stat pill 随宽度自适应、主滚动锚点修正、皮肤商店按宽度分列、分享提示动态文案。
 
-## 三、待办事项（建议顺序）
+#### 进行中
+- 音效 / 音乐扩展：当前只有主循环 BGM + 基础音效，关卡专属 BGM、更丰富反馈音效暂未规划。
 
-### 3.1 音频（收尾）
+#### 待办
+- 过渡动画：场景切换、弹窗出现 / 关闭、按钮反馈等过渡动画偏简单。
+- 社交闭环：排行榜、成就、邀请分享回流等深度社交能力，等待是否上线服务端再决定。
 
-- [x] 导入工程并在 **GameController** 各 `clip*` 上绑定 `AudioClip`（当前资源为 **`.m4a`**，编辑器与浏览器预览通常可直接播放）
-- [x] **微信真机**：若个别机型无法解码 `.m4a`，请按[微信小游戏音频文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/audio.html)改用 **mp3** 等推荐格式后重新导入绑定
-- [x] 顶栏「音乐·开/关」「音效·开/关」与 `AudioSource` 绑定及状态持久化
-- [x] 关卡开始、倒计时 tick、胜负、操作 hooks、UI 点击等播放逻辑
+### 1.4 商业化
 
-### 3.2 美术与动画（高优先级，对齐 H5 观感）
+#### 已完成
+- 本地积分经济雏形：每日登录 / 胜负结算 / 破纪录 / 分享的积分入账与皮肤兑换全链路打通，可在客户端纯本地完成验证。
 
-- [x] 地图：`GameController` 提供 `sfMapFloor` / `sfMapEdge` / `sfMapStone1` / `sfMapStone2`；四张绑齐后 `BoardView` 用精灵铺格，否则色块占位（**贴图可后补**）
-- [x] 猫 / 鼠：`sfCat`、`sfMouse`、**`sfMouseVertical`**（可空）、**`mouseSpriteScale`**（默认 1.5 等可在 Inspector 调）；未绑贴图时仍为圆点占位（**序列帧 / Spine 可后补**）
-- [x] UI 视觉：`UiTheme`（对齐 `src/style.css` 色板）+ 顶栏 / 结算弹窗 / 摇杆 / 大按钮 `styleRoundActionButton`；全屏底 `sfUiBg` 或 `UiTheme.bgFallback`
-- [x] 安全区：`getSafeAreaInsets()` + 顶栏 / HUD / 底提示 / 摇杆与右侧按钮 `Widget` 边距；棋盘可用区 `layoutBoard` 叠加左右上下安全边距
-
-
-### 3.3 微信小游戏发布（发布前必做）
-
-- [x] **构建发布**：Creator 菜单 **项目 → 构建发布**，发布平台选 **微信小游戏**，配置 **AppID**、首包与分包策略（首包体积见[微信文档](https://developers.weixin.qq.com/minigame/dev/guide/base-ability/subPackage/useSubPackage.html)）
-- [x] **存储**：已实现 `assets/scripts/storage/platformKv.ts` — 在 **`cc/env` 的 `WECHAT` 为真** 且存在 `wx` 时使用 **`wx.getStorageSync` / `setStorageSync` / `removeStorageSync`**；关卡存档 `levelSave.ts`、音频设置 `audioSettings.ts` 已改为经此读写（与网页版键名一致）。异步 `wx.setStorage` 若需可再包一层队列（当前同步 API 与原有 try/catch 语义一致）
-- [x] 音频：与微信**同时播放实例数**、**用户触媒后**再播等策略对齐；**真机验证 `.m4a`**（异常则改 **mp3** 等再绑定，见 3.1）
-- [x] 在微信开发者工具 **详情 → 本地设置** 或 **game.json** 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归
-- [x] **隐私与用户数据**：按[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)配置用户隐私保护指引、必要接口声明等
-- [x] **个人中心分包**：`PersonalCenterPage.scene` 已迁移到 `assets/personal-center/`，由 `assets/personal-center.meta` 配置为 wechatgame `subpackage`；Bundle 名 `personal-center` 由 `assets/scripts/game/sceneRoutes.ts` 中的 `PERSONAL_CENTER_BUNDLE` 维护，构建后该场景及其依赖会从首包剥离
-- [x] **微信分享**：主游戏界面和个人中心页面通过 `storage/wechatShare.ts` 注册右上角分享菜单、会话分享和朋友圈分享
-
-**3.3 自检（发布前打勾）**
-
-| 项 | 说明 |
-|----|------|
-| 构建产物 | `build/wechatgame`（或所选输出目录）可导入微信开发者工具 |
-| 存储 | 真机通关 / 改音频开关后杀进程再进，进度与开关应保持 |
-| 音频 | 首次点击后 BGM/SFX 可播；无解码错误日志 |
-| 合规 | 隐私弹窗、敏感 API 声明与审核材料就绪 |
-| 分包 | `PERSONAL_CENTER_BUNDLE` 与构建发布中的 Bundle 名一致 |
-| 分享 | 微信开发者工具和真机中右上角分享菜单可见，分享文案正确 |
-
-### 3.4 工程与协作（中优先级）
-
-- [x] 将「挂载 GameController 的场景」纳入版本管理并设为启动场景（若尚未保存场景文件）
-- [x] 资源目录规范：`textures/`、`audio/`、`prefabs/` 等
-- [x] 需要时在 `docs/` 补充「场景节点树 / Prefab 说明」
-
-### 3.5 可选优化（低优先级）
-
-- [x] 强横屏与分辨率策略与网页版 `style.css` 强横屏方案对齐
-- [x] 性能：老鼠数量上限、对象池（若上 Spine/大量粒子再评估）
-- [x] 国际化（若不需要可忽略）
+#### 待办
+- 广告 / 内购 / 品牌合作：均未启动，需先有稳定留存与服务端账号体系再考虑接入。
 
 ---
 
-## 四、快速运行（给新同事）
+## 2. 发布自检（微信小游戏）
 
-1. 使用 **Cocos Creator 3.8.8** 打开 `Cocos-Tom_Cat` 工程。  
-2. 打开或新建 2D 场景，选中 **Canvas**。  
-3. **添加组件 → `GameController`**，保存场景。  
-4. 将已导入的 **AudioClip**（例如由 **`.m4a`** 生成）拖到 **GameController** 的 `clipBgmMain`、`clipLevelStart`、`clipSfxJump` 等属性上（与玩法一一对应即可）。  
-5. （可选）将地图四张贴图、猫/鼠单帧、**老鼠纵向贴图**、全屏底图拖到 `sfMapFloor` / `sfMapEdge` / `sfMapStone1` / `sfMapStone2`、`sfCat`、`sfMouse`、**`sfMouseVertical`**、`sfUiBg`；按需调整 **`mouseSpriteScale`**；不配则色块 + 主题底。  
-6. 点击运行预览。
+发布前请按下面 checklist 逐项确认。
+
+### 2.1 构建发布
+- [ ] Cocos Creator → **项目 → 构建发布** → 平台选择 **微信小游戏**，AppID、首包 / 分包策略均按产品配置。
+- [ ] 构建产物 `build/wechatgame`（或所选输出目录）可被微信开发者工具导入。
+- [ ] `personal-center` 在构建报告中作为独立 subpackage 出现，首包不包含其场景与依赖。
+
+### 2.2 运行时
+- [ ] 真机通关 / 改音频开关后**杀进程再进**，关卡进度 + 音频设置均保留。
+- [ ] 首次点击 / 按键后 BGM + SFX 可播；无解码错误日志（如 `.m4a` 异常请换 `.mp3` 重绑）。
+- [ ] 进入 → 退出 → 再进个人中心，皮肤、积分、scroll area 均正常；多次进入不出现 overlay 节点泄漏。
+- [ ] 右上角分享菜单可见，分享文案符合预期；分享回调内当日 +10 只入一次。
+
+### 2.3 合规
+- [ ] 在微信开发者工具 **详情 → 本地设置** 或 `game.json` 中固定 **最低基础库**（建议 ≥ 3.1.x）并真机回归。
+- [ ] 配置用户隐私保护指引、必要接口声明等（参考[平台要求](https://developers.weixin.qq.com/minigame/dev/guide/open-ability/privacy.html)）。
+
+### 2.4 关键常量校对
+- [ ] `sceneRoutes.PERSONAL_CENTER_BUNDLE === 'personal-center'`，与 `assets/personal-center.meta` 的 `userData.bundleName` 一致。
+- [ ] `settings/v2/packages/scene.json` 的 `current-scene` UUID 指向 `scene-001.scene`。
+- [ ] `profiles/v2/packages/wechatgame.json` 的 `orientation = landscape`。
 
 ---
 
-## 五、变更记录（手写维护）
+## 3. 性能追踪 TODO
 
-| 日期 | 变更摘要 |
-|------|----------|
-| 2026-05-14 | 初版：核心逻辑 + 占位渲染 + 动态 UI + 本地存档（`sys.localStorage`） |
-| 2026-05-14 | 音频：`CocosGameAudio` + `audioSettings`；顶栏开关与 `GameSimulation` hooks、倒计时与胜负音效 |
-| 2026-05-14 | 音频资源：工程内使用 **`.m4a`** 导入；文档补充微信真机格式注意项 |
-| 2026-05-14 | 3.2：`BoardView` 地图精灵 + `GameController` 贴图槽位；`UiTheme` / 安全区 / 全屏背景；贴图与序列动画可后补 |
-| 2026-05-14 | UI：移除重置入口；弹窗与按钮描边统一；关卡弹窗宽度与动态格子；老鼠纵向贴图 + 显示缩放；失败结算重玩居中 |
-| 2026-05-14 | **3.3 部分**：`storage/platformKv.ts` + `levelSave` / `audioSettings` 对接微信 `wx` 同步存储；文档补充发布自检表 |
-| 2026-05-14 | 微信小游戏构建：`profiles/v2/packages/wechatgame.json` 中 `orientation` 改为 **landscape**，生成 `game.json` 的 `deviceOrientation` 为横屏 |
-| 2026-05-18 | 积分系统：新增每日登录、胜负/破纪录奖励、皮肤兑换、积分流水和本地 v2 存档 |
-| 2026-05-18 | 个人中心：拆为独立场景 `PersonalCenterPage.scene`，支持 Bundle/分包加载、积分卡片、皮肤商店和积分详情弹窗 |
-| 2026-05-18 | 微信能力：主游戏界面和个人中心页面接入微信分享菜单 |
-| 2026-05-19 | 个人中心分包：场景迁移到 `assets/personal-center/` 并按 wechatgame `subpackage` 打包；`PERSONAL_CENTER_BUNDLE` 改为 `personal-center`；构建 profiles 中 `PersonalCenterPage.scene` 的 URL 同步更新；清掉 `scene.scene` 中残留的 `personalCenter*` 哑序列化字段 |
-| 2026-05-19 | 个人中心稳定性：修复 `clearPageChildren` 仅销毁部分子节点导致的 overlay 节点泄漏；`lateUpdate` 跳过失效 ScrollArea 并周期 compact，避免历史弹窗关闭后访问已销毁组件抛错 |
-| 2026-05-19 | UI 原子收敛：抽出 `ui/widgets.ts`，`GameController` 与 `PersonalCenterPage` 共用 `makeLabelButton / paintRoundRect / paintModal*` 等工具，删除两份重复实现 |
-| 2026-05-19 | 个人中心 UI 微调：主滚动 content 锚点定位修正为固定 `vs.height/2`；积分卡片 stat pill 改为基于 `contentW` 动态计算；登录奖励弹窗改用统一 `UiTheme.modalPanelBg/Border` |
-| 2026-05-19 | 路由统一：`sceneRoutes.ts` 新增 `loadMainGameScene` / `loadPersonalCenterScene`，`GameController` / `PersonalCenterPage` 不再各自拼装 Bundle 加载逻辑 |
-| 2026-05-19 | 分享文案刷新：`PersonalCenterPage.refreshScoreCard` 后会重新 `setupWechatShare`，分享卡片随积分 / 解锁数实时更新 |
-| 2026-05-19 | 失败积分频控：`ScoreManager.addLoseReward` 每日入账上限 10 次（+20 分/天），存档新增 `failureRewardDate/Count`；失败弹窗在达到上限时给出提示文案 |
-| 2026-05-19 | 存储健壮性：`platformKv.decodeWxValue` 只接受字符串，避免遇到非预期类型时被 `JSON.stringify` 二次包装；清理 `PersonalCenterPage.updateScrollAreaSize` 死代码与 `BoardView.ts` 未使用的 `BatchNode` import |
-| 2026-05-19 | ScoreManager 构造副作用拆分：构造函数只做 `loadFromDisk`，每日登录奖励由 `claimDailyLoginRewardIfNeeded` 显式接口提供，主游戏 `GameController.onLoad` 调用；工具脚本只读访问不再触发发奖与写盘 |
-| 2026-05-19 | 资源清理：删除遗留场景 `assets/scene.scene` 及其 meta（启动场景始终是 `scene-001.scene`，由 `settings/v2/packages/scene.json` 指定），同步更新 README 与 `docs/DESIGN_DOC.html` 中的项目结构示意 |
-| 2026-05-19 | 文档校准：`DESIGN_DOC.md` §5 改为"已完成 / 进行中 / 待办"分类的路线图；`INTEGRATION_SYSTEM_DESIGN.md` §3 / §8 同步 ScoreManager 构造拆分、个人中心独立 Bundle 现状与历史措辞清理；`PERFORMANCE_OPTIMIZATION.md` 个人中心收益明确为定性结论，新增 profiler 实测数据 TODO 表格 |
-| 2026-05-19 | 分享奖励：`ScoreManager.addShareReward` 提供每日 1 次 +10 积分入账（存档新增 `shareRewardDate`），`wechatShare.setupWechatShare` 扩展 `onShareSuccess(channel)` 回调，主游戏与个人中心入口均接入；个人中心入账后立即 `refreshScoreCard` 同步 UI |
+当前性能改造以定性结论为主（对象池、子场景切换、Bundle 分包、widget 复用、`scrollAreas` 防御等），尚未在微信开发者工具 / Cocos Profiler 中收集 Before / After 的定量指标。在外发前建议按下表填齐数据：
+
+| 指标 | 采集方式 | 当前数据 | 建议目标 |
+|------|----------|----------|----------|
+| 主场景节点数（进入个人中心前 vs 进入后） | Cocos `Profiler` 节点统计 / `director._scene._children.length` | 未采集 | 个人中心切换后主场景节点应释放至 0（场景被替换） |
+| 主场景 + 个人中心 draw call | Cocos Profiler stats 面板 | 未采集 | 两个场景的 draw call 独立，个人中心 ≤ 50 |
+| 微信小游戏首包体积（personal-center subpackage 拆出前后对比） | 微信开发者工具 → 构建 → 包体大小 | 未采集 | personal-center 完整体积进入 subpackage，首包减少其全部大小 |
+| 进入 / 退出个人中心耗时 | `performance.now()` 包裹 `loadPersonalCenterScene` 与 `loadMainGameScene` | 未采集 | 真机首次进入 < 1s（含 subpackage 下载），二次进入 < 300ms |
+| 结算前后内存增量 | 多次结算后 Profiler 内存采样 | 未采集 | 单次结算前后内存差异接近 0（弹窗销毁后归位） |
+
+采集步骤建议：1) 在微信开发者工具中按表格指标各跑一次；2) 把数据填进对应行；3) 数据填齐后，可在 [`CHANGELOG.md`](./CHANGELOG.md) 中追加一条"性能基线已建立"。
+
+---
+
+## 4. 短期优先级
+
+按当前情况，下一步建议（按优先级排序）：
+
+1. 把 §3 表格中的 profiler 数据采到 ≥ 3 项，给出真实的首包瘦身数据与个人中心 draw call 基线。
+2. 补 `ScoreManager` / `GameSimulation` 的单元测试（纯逻辑、无 Cocos 依赖，可走 Vitest）。
+3. 完成多套皮肤的美术资源接入并把 `BoardView.configureCatFrameAnimations` 的皮肤分支接通。
+4. 评估失败积分反作弊是否需要叠加最低游戏时长策略；视需要在 `addLoseReward` 之前加一道 `GameSimulation` 提供的"本局有效输入"判断。
+
+更长期（排行榜、成就、商业化）需先决定是否引入服务端再启动。
+
+---
+
+## 5. 快速运行（新同事入门）
+
+1. 用 **Cocos Creator 3.8.8** 打开 `Cocos-Tom_Cat` 工程；等待资源导入与脚本编译。
+2. 打开 `assets/scene-001.scene`（启动场景）。
+3. 确认 `Canvas` 节点已挂载 `GameController` 组件。
+4. 在 Inspector 中检查贴图 / 音频资源绑定（参考根目录 `README.md` § 运行预览）。
+5. 点击 Creator 顶部预览按钮，或在微信开发者工具中导入 `build/wechatgame` 调试。

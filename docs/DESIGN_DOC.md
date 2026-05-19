@@ -1,252 +1,120 @@
-# 猫捕鼠冠军Tom软件 设计文档
+# 猫捕鼠冠军Tom · 设计文档
 
-## 1. 项目概述
-
-猫捕鼠冠军Tom软件 是一个基于 Cocos Creator 的休闲小游戏项目。玩家控制小猫在棋盘地图中移动、跳跃和攻击，在限定时间内抓住关卡中的老鼠。
-
-### 1.1 核心玩法
-- 玩家控制小猫在网格地图上移动
-- 通过跳跃和攻击等动作捕捉老鼠
-- 在限定时间内捕获所有老鼠以通关
-- 随着关卡提升，老鼠数量增加，移动速度加快
-
-### 1.2 技术栈
-- Cocos Creator 3.8.8
-- TypeScript
-- Cocos Creator 组件系统与场景编辑器
-- Cocos 内置音频、精灵、节点、输入与本地存储能力
-- 微信小游戏适配存储：微信环境使用 `wx.*StorageSync`，其他平台使用 `sys.localStorage`
-
-## 2. 系统架构
-
-### 2.1 项目结构
-
-```text
-assets/
-  audio/                 音效与背景音乐资源
-  images/                猫、老鼠、地图、UI 等图片资源
-  scene-001.scene        当前主游戏场景
-  personal-center/       个人中心子目录，配置为独立 Bundle（wechatgame subpackage）
-    PersonalCenterPage.scene
-                         个人中心独立场景，按需通过 assetManager.loadBundle 拉取
-  scripts/
-    GameController.ts    游戏主控制器，负责 UI、输入、关卡流程和音频绑定
-    PersonalCenterPage.ts
-                         个人中心页面，负责积分卡片、皮肤商店和积分流水弹窗
-    BoardView.ts         棋盘渲染与角色显示
-    game/                纯游戏逻辑、积分管理、皮肤配置、场景路由
-    audio/               Cocos 音频封装
-    render/              地图贴图配置
-    storage/             关卡存档、跨端存储、微信分享封装
-    ui/                  UI 主题、安全区适配与共享按钮/面板 widget（widgets.ts）
-    visual/              猫动画播放
-settings/                Cocos Creator 项目设置
-package.json             Cocos Creator 项目信息
-tsconfig.json            TypeScript 配置
-```
-
-### 2.2 核心模块
-
-#### 2.2.1 游戏控制模块 (GameController)
-- 负责游戏流程控制，包括关卡开始、暂停、结束
-- 处理用户输入（键盘和触摸）
-- 管理 UI 元素和界面布局
-- 处理音频播放
-- 维护游戏状态和进度
-
-#### 2.2.2 游戏逻辑模块 (GameSimulation)
-- 实现游戏核心逻辑，包括：
-  - 角色移动、跳跃、攻击
-  - 老鼠 AI 行为
-  - 碰撞检测
-  - 游戏结束条件判断
-  - 关卡进度管理
-
-#### 2.2.3 渲染模块 (BoardView)
-- 负责游戏场景的渲染
-- 处理地图、角色和动画的显示
-- 适配不同屏幕尺寸
-
-#### 2.2.4 存储模块
-- 管理关卡进度和音频设置的保存
-- 适配不同平台的存储机制
-
-#### 2.2.5 音频模块
-- 封装 Cocos 音频系统
-- 管理背景音乐和音效的播放
-
-#### 2.2.6 积分与皮肤模块
-- `ScoreManager` 负责每日登录、胜负结算、破纪录奖励、皮肤兑换、当前皮肤和积分流水；失败积分通过 `addLoseReward` 接口走每日次数频控（默认每日 10 次/+20 分）。
-- `skinConfig` 定义皮肤 ID、名称、价格、描述、默认标记和当前阶段的视觉色调。
-- 默认皮肤始终可用；非默认皮肤通过积分兑换后可切换。
-
-#### 2.2.7 页面与微信能力
-- `PersonalCenterPage` 是独立场景页面，便于微信小游戏 Bundle/分包。
-- `sceneRoutes.ts` 统一维护主场景、个人中心场景与 Bundle 名，并提供 `loadMainGameScene` / `loadPersonalCenterScene` 封装，避免业务代码直接调用 `assetManager.loadBundle`。
-- `wechatShare.ts` 封装微信分享菜单、会话分享和朋友圈分享；个人中心积分卡片刷新时会重新调用以同步分享文案。
-
-#### 2.2.8 UI 原子组件
-- `ui/widgets.ts` 提供 `makeLabelButton`、`paintRoundRect`、`paintModalBackdrop`、`paintModalPanelBg`、`paintModalPanelBorder`、`addUiNode`、`addUiLabel`、`solidColor` 等工具。
-- `GameController`、`PersonalCenterPage` 共用同一份实现，避免按钮、弹窗在两边出现默认值漂移。
-
-## 3. 核心功能实现
-
-### 3.1 游戏机制
-
-#### 3.1.1 移动系统
-- 支持键盘（WASD/方向键）和触摸（虚拟摇杆）控制
-- 角色在网格上移动，每次移动一格
-- 碰撞检测：无法穿过障碍物
-
-#### 3.1.2 跳跃系统
-- 跳跃需要面前一格是障碍物，并且障碍物后一格可行走
-- 跳跃失败会导致角色眩晕
-- 跳跃成功可以越过障碍物
-
-#### 3.1.3 攻击系统
-- 攻击会尝试攻击面前一格
-- 若目标格不可行走，角色会进入短暂眩晕
-- 攻击成功可以移动到目标格
-
-#### 3.1.4 老鼠 AI
-- 老鼠会远离猫的位置
-- 随着关卡提升，老鼠移动速度加快
-- 老鼠数量随关卡增加
-
-#### 3.1.5 关卡系统
-- 每关默认限时 30 秒
-- 关卡数量上限为 30 关
-- 关卡越高，老鼠数量越多，老鼠移动间隔也会逐步缩短
-- 通关条件：在时间结束前抓完所有老鼠
-
-### 3.2 界面系统
-
-#### 3.2.1 主界面
-- 左侧：音乐/音效控制、个人中心入口
-- 右侧：开始/暂停、下一关、全部关卡按钮
-- 中央：游戏棋盘
-- 底部：虚拟摇杆（移动）和动作按钮（跳跃、攻击）
-
-#### 3.2.2 关卡选择界面
-- 显示所有关卡，已解锁的关卡可点击进入
-- 显示当前关卡进度
-
-#### 3.2.3 游戏结束界面
-- 显示游戏结果（胜利/失败）
-- 显示剩余时间
-- 显示本局积分变化，例如通关 +5、失败 +2、破纪录额外 +10；失败积分达到当日上限时改为"已达今日失败积分上限，本次不再发放"
-- 提供重玩和下一关按钮
-
-#### 3.2.4 个人中心页面
-- 通过 Bundle/分包加载独立场景 `PersonalCenterPage.scene`。
-- 当前积分卡片展示可用积分、累计积分、已解锁皮肤数量，并提供积分流水详情。
-- 皮肤商店以自适应网格展示皮肤卡片，最多 4 列。
-- 积分流水以遮罩弹窗展示，避免挤占主页面空间。
-
-### 3.3 存储系统
-
-- 保存关卡进度和音频设置
-- 保存积分、累计积分、每日登录日期、已解锁皮肤、当前皮肤和最近积分流水
-- 微信小游戏环境：使用 `wx.setStorageSync` / `wx.getStorageSync`
-- 其他平台：使用 `sys.localStorage`
-
-### 3.4 微信小游戏能力
-
-- 个人中心页面支持 Bundle/分包加载。
-- 主界面和个人中心页面支持微信分享菜单。
-- 当前分享能力仅在微信小游戏环境生效，其他平台静默忽略。
-
-## 4. 技术实现细节
-
-### 4.1 游戏循环
-- 使用 Cocos Creator 的 update 方法实现游戏循环
-- 处理游戏逻辑更新、动画更新和渲染
-
-### 4.2 碰撞检测
-- 基于网格的碰撞检测
-- 检查角色移动路径上的障碍物
-
-### 4.3 动画系统
-- 使用 Cocos Creator 的精灵帧动画
-- 实现猫的不同状态动画（待机、行走、眩晕）
-
-### 4.4 音频系统
-- 封装 Cocos 音频 API
-- 支持背景音乐和音效的独立控制
-
-### 4.5 跨平台适配
-- 适配不同屏幕尺寸和分辨率
-- 适配不同平台的存储机制
-- 适配不同平台的输入方式
-
-## 5. 路线图（已完成 / 进行中 / 待办）
-
-本节按当前真实代码状态重新分类，避免把已经落地的能力误归到"建议"里。每条建议都尽量给出涉及到的文件，便于读者快速定位。
-
-### 5.1 游戏内容扩展
-
-#### 已完成
-- **皮肤系统骨架**：`game/skinConfig.ts` 定义皮肤元数据，`ScoreManager` 负责解锁 / 切换；当前阶段用 `visualTint` 区分外观。
-- **关卡限时与难度梯度**：每关 30 秒、关卡上限 30 关、老鼠数量随关卡递增等已在 `GameSimulation` 内实现。
-
-#### 进行中
-- **皮肤美术资源接入**：`assets/images/cat/skins/` 多套动画帧仍待补齐；`BoardView` 中按当前皮肤加载对应帧组的分支需要等资源就位后再接（见 `INTEGRATION_SYSTEM_DESIGN.md` §8.3.1）。
-
-#### 待办
-- **新关卡形式**：特殊地图元素（传送门 / 陷阱）、Boss 关卡设计尚未排期。
-- **角色技能系统**：加速 / 范围攻击等技能、不同行为模式的老鼠均未启动。
-- **新增游戏模式**：无尽模式、时间挑战模式、多人对战模式均为长期备选。
-
-### 5.2 技术优化
-
-#### 已完成
-- **代码模块化**：UI 按钮 / 弹窗等原子组件抽到 `ui/widgets.ts`；场景跳转封装到 `game/sceneRoutes.ts`；积分系统集中在 `game/ScoreManager.ts` 并按职责拆出 `addLoseReward` / `claimDailyLoginRewardIfNeeded` 等显式接口。
-- **资源异步加载与首屏瘦身**：个人中心场景通过 `assets/personal-center/` Bundle 配置打成微信小游戏 subpackage，由 `assetManager.loadBundle` 按需拉取（详见 `INTEGRATION_SYSTEM_DESIGN.md` §3.4.2、`PERFORMANCE_OPTIMIZATION.md` §5）。
-- **跨平台存储**：`storage/platformKv.ts` 适配微信 `wx.*StorageSync` 与浏览器 `sys.localStorage`，并修复了非字符串值会被二次编码的隐患。
-
-#### 进行中
-- **运行时性能数据收集**：性能改造目前以定性描述为主（节点 / 内存定量数据待补，见 `PERFORMANCE_OPTIMIZATION.md` §6 末尾的 profiler TODO）。
-- **失败积分反作弊**：每日次数频控已经上线，更进一步的最低游戏时长 / 单局有效输入次数策略待评估再上。
-
-#### 待办
-- **单元测试与回归**：`GameSimulation`、`ScoreManager` 的纯逻辑可优先补 Jest / Vitest 风格的单测，目前仓库无测试目录。
-- **物理 / 渲染深度优化**：自定义 shader、对象池、纹理图集等长期备选，目前没有看到瓶颈。
-- **多端适配**：iOS / Android / PC 客户端目前未单独打包，仅 H5 / 微信小游戏路径走过。
-
-### 5.3 用户体验改进
-
-#### 已完成
-- **结算 / 关卡列表 / 登录奖励弹窗共用 UiTheme**：`paintModalPanelBg/Border` + `MODAL_PANEL_CORNER_RADIUS`，按钮风格统一。
-- **微信分享**：主界面与个人中心均接入 `wechatShare.ts`；个人中心刷新积分后会重新调用 `setupWechatShare` 同步分享文案。
-- **个人中心 UI 体验改进**：积分卡片 stat pill 随宽度自适应，主滚动锚点修正，皮肤商店按宽度分列等已落地。
-
-#### 进行中
-- **音效 / 音乐扩展**：当前只有主循环 BGM + 基础音效，关卡专属 BGM、丰富的反馈音效暂未规划。
-
-#### 待办
-- **过渡动画**：场景切换、弹窗出现 / 关闭、按钮反馈等过渡动画偏简单，可以做一次专门的 UI 微动效迭代。
-- **社交闭环**：排行榜、成就、邀请分享回流等深入社交能力尚未实现，等待是否上线服务端再决定。
-
-### 5.4 商业化考虑
-
-#### 已完成
-- **本地积分经济雏形**：每日登录 / 胜负结算 / 破纪录的积分入账与皮肤兑换全链路打通，可在客户端纯本地完成验证。
-
-#### 待办
-- **广告 / 内购 / 品牌合作**：均处于未启动状态，需先有稳定的留存与服务端账号体系再考虑接入。
-
-## 6. 结论
-
-`猫捕鼠冠军Tom` 已具备完整玩法循环（捕鼠关卡 + 积分经济 + 皮肤兑换 + 微信分享 + 个人中心分包），代码上也完成了一轮模块化、稳定性与跨端存储的收敛。短期重点应放在：
-
-1. 把 `PERFORMANCE_OPTIMIZATION.md` 中的定性结论补上 profiler 实测数据；
-2. 补 `ScoreManager` / `GameSimulation` 的单元测试；
-3. 完成多套皮肤的美术资源接入并把 `BoardView` 的皮肤分支接通。
-
-更长期（排行榜 / 成就 / 商业化）需要先决定是否引入服务端再启动。
+> 描述项目"是什么 / 怎么组织"，长期稳定，与代码同步。  
+> 路线图与待办见 [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)；积分 / 皮肤 / 微信能力专题见 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md)；变更历史见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ---
 
-### 文档版本
-- 版本：1.1
-- 日期：2026-05-19（重新整理路线图，按已完成 / 进行中 / 待办分类）
+## 1. 项目概述
+
+`猫捕鼠冠军Tom` 是一个基于 Cocos Creator 的横屏休闲小游戏。玩家控制小猫在网格地图上移动、跳跃、攻击，限时抓住所有老鼠通关；通关 / 失败 / 破纪录都会发放积分，可在个人中心兑换皮肤。
+
+### 1.1 核心玩法
+- 网格移动 + 跳跃 + 攻击；老鼠 AI 以 BFS 距离场远离小猫。
+- 每关默认限时 30 秒，关卡上限 30 关；关卡越高老鼠越多、步进越快。
+- 通关条件：在剩余时间归零前抓完所有老鼠。
+
+### 1.2 技术栈
+- Cocos Creator **3.8.8** + TypeScript
+- Cocos 组件 / 场景编辑器 / `Graphics` 动态绘制
+- 跨端存储：微信小游戏走 `wx.*StorageSync`，其他平台走 `sys.localStorage`
+- 微信小游戏能力：分享菜单 + Bundle / subpackage 分包
+
+---
+
+## 2. 项目结构
+
+详细的目录树以仓库 `README.md` 为准（仅含面向运行预览 / 构建发布的视角）。本文从架构视角描述各目录的职责：
+
+```text
+assets/
+  scene-001.scene              主游戏场景（启动场景，settings/v2/packages/scene.json 中固定）
+  personal-center/             独立 Bundle 目录（wechatgame subpackage）
+    PersonalCenterPage.scene
+  scripts/
+    GameController.ts          游戏主控制器：UI 搭建、输入、关卡流程、结算 / 弹窗、音频绑定
+    PersonalCenterPage.ts      个人中心页面：积分卡片 / 皮肤商店 / 积分流水弹窗
+    BoardView.ts               棋盘渲染（地图、角色、对象池）
+    game/                      纯游戏逻辑（GameSimulation / Grid / mice / 关卡）+ ScoreManager + skinConfig + sceneRoutes
+    audio/                     CocosGameAudio：BGM / SFX 双 AudioSource 封装
+    render/                    地图贴图配置
+    storage/                   levelSave / audioSettings / platformKv 跨端存储 + wechatShare 分享封装
+    ui/                        UiTheme 色板与弹窗常量、safeArea 安全区适配、widgets 共享 UI 原子
+    visual/                    CatMotionAnimator 猫位移补间
+```
+
+---
+
+## 3. 核心模块
+
+### 3.1 GameController
+- 单一 `Component`，作为整个主场景的入口。
+- 负责：UI 节点动态搭建（侧栏 / HUD / 摇杆 / 动作按钮 / 弹窗）、键盘 + 触摸输入解析、关卡状态机、与 `GameSimulation` 的 hooks 绑定、结算文案与 `ScoreManager` 入账。
+- `onLoad` 中显式调用 `scoreManager.claimDailyLoginRewardIfNeeded()` 与 `setupWechatShare`，避免被动副作用。
+
+### 3.2 GameSimulation 与游戏数据
+- `game/` 下纯逻辑层，不依赖任何 Cocos 节点：地图 `Grid`、角色 `Cat` / `Mouse`、步进、跳跃 / 攻击规则、胜负判定、`mouseCountForLevel` 等关卡梯度。
+- 通过 `setSoundHooks` 回调把"开始关卡 / 眩晕 / 跳跃成功 / 攻击成功 / 抓到老鼠"暴露给 `GameController`，由后者驱动音频与视觉反馈。
+
+### 3.3 BoardView
+- 承担棋盘 + 角色的渲染：地图四张贴图齐时按 `SpriteFrame` 铺格，缺贴图则 `Graphics` 色块兜底。
+- 内置 `spritePool` / `mousePool` 对象池，关卡切换时复用而不重新创建节点。
+
+### 3.4 ScoreManager 与皮肤
+- 单例：`ScoreManager.getInstance()` 只做存档加载。
+- 提供每日登录、胜负 / 破纪录积分入账、失败积分每日次数频控、分享 +10 / 每日 1 次、皮肤解锁与切换、积分流水。
+- 详见 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md)。
+
+### 3.5 PersonalCenterPage
+- 独立场景 + 独立 Bundle（`personal-center`，wechatgame subpackage），通过 `sceneRoutes.loadPersonalCenterScene()` 按需加载。
+- 页面布局：返回按钮 + 标题、积分卡片（可用积分 / 累计 / 已解锁皮肤 / 积分详情 / 分享提示）、皮肤商店（自适应网格，最多 4 列）、积分流水详情弹窗。
+- 详见 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §3。
+
+### 3.6 跨端存储
+- `storage/platformKv.ts` 屏蔽 `wx.*StorageSync` 与 `sys.localStorage` 差异；所有上层（`levelSave` / `audioSettings` / `ScoreManager`）只依赖它的 string 接口。
+- `decodeWxValue` 严格要求字符串，避免被 `JSON.stringify` 二次编码。
+
+### 3.7 微信能力
+- `storage/wechatShare.ts` 封装 `showShareMenu` / `updateShareMenu` / `onShareAppMessage` / `onShareTimeline`，并暴露 `onShareSuccess(channel)` 回调供业务接入（如分享积分）。
+- 仅在 `cc/env` 的 `WECHAT` 为真且全局 `wx` 存在时生效；其他平台无副作用。
+
+### 3.8 UI 原子组件
+- `ui/widgets.ts`：`makeLabelButton` / `paintRoundRect` / `paintModalBackdrop` / `paintModalPanelBg` / `paintModalPanelBorder` / `addUiNode` / `addUiLabel` / `solidColor` / `defaultBtnCornerRadius` / `paintLabelButtonBg`。
+- `ui/UiTheme.ts`：色板、弹窗常量（`MODAL_PANEL_CORNER_RADIUS` / `MODAL_PANEL_WIDTH` 等）、`styleBarButton` / `styleRoundActionButton` 等共享样式函数。
+- `ui/safeArea.ts`：`getSafeAreaInsets()` 用于侧栏 / HUD / 操作区与全屏底图的边距。
+
+### 3.9 路由
+- `game/sceneRoutes.ts` 集中维护：
+  - `MAIN_GAME_SCENE = 'scene-001'`
+  - `PERSONAL_CENTER_SCENE = 'PersonalCenterPage'`
+  - `PERSONAL_CENTER_BUNDLE = 'personal-center'`
+  - `loadMainGameScene()` / `loadPersonalCenterScene()`：屏蔽 Bundle 加载细节，并在 Bundle 失败时仅在非微信预览环境回退。
+
+---
+
+## 4. 界面与流程规范
+
+### 4.1 主界面
+- **左侧栏**：音乐 / 音效开关、个人中心入口。
+- **右侧栏**：开始 / 暂停、下一关、全部关卡。
+- **中央**：游戏棋盘（`BoardView` 渲染）。
+- **底部**：左下虚拟摇杆、右下圆形跳跃 + 攻击按钮。
+- **HUD**：当前关卡、剩余时间、本关最佳、眩晕提示。
+- 弹窗（结算 / 关卡列表 / 登录奖励）全部用 `paintModalPanelBg` + `paintModalPanelBorder` + `MODAL_PANEL_CORNER_RADIUS` 共享样式。
+
+### 4.2 结算弹窗
+- 显示胜利 / 失败 + 剩余时间 + 本局积分变化文案：
+  - 胜利：`积分 +5`（破纪录追加 `+10`）
+  - 失败：`积分 +2`，达到当日上限后改为 `已达今日失败积分上限，本次不再发放`
+- 胜利提供"重玩 / 下一关"，失败仅"重玩"且按钮居中。
+
+### 4.3 个人中心
+- 见 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §3，本节不再重复。
+
+---
+
+## 5. 跨平台与兼容
+
+- **微信小游戏**：横屏（`game.json` 的 `deviceOrientation = landscape`）；个人中心通过 subpackage 分包；分享菜单 / 分享朋友圈；存储走 `wx.*StorageSync`。最低基础库建议 ≥ 3.1.x。
+- **浏览器 / 编辑器预览**：自动回退到 `sys.localStorage`；分享相关 API 静默忽略；个人中心 Bundle 加载失败时回退 `director.loadScene`，方便编辑器预览。
+- **其他原生平台**：未单独打包验证，预期借助 Cocos 默认行为可用，但需要补回归测试。
