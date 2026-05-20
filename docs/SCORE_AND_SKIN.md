@@ -124,10 +124,30 @@ assets/resources/cat-skins/
 ### 4.2 加载与切换流程
 
 - 加载：`assets/scripts/game/catSkinLoader.ts` 暴露 `loadCatSkinFrames(skinId, fallback='default')`，按 4 个动作目录顺序加载；某动作目录加载失败 / 为空时自动回退到 `default` 同名目录。
-- 应用：`GameController.applyCurrentCatSkin()` 同时设 `visualTint` 与异步触发 `applyCatSkinFrames(skinId)`；后者拿到帧后再次 `BoardView.configureCatFrameAnimations`，并在写入前用 `boardView.isValid` 防御场景切换导致的并发问题。
+- 应用：`GameController.applyCurrentCatSkin()` 同时设 `visualTint`、异步触发 `applyCatSkinFrames(skinId)` 与 `applyCatSkinAudio(category)`（见 §4.3）；前者拿到帧后再次 `BoardView.configureCatFrameAnimations`，并在写入前用 `boardView.isValid` 防御场景切换导致的并发问题。
 - 兑换：在个人中心点击"兑换"调用 `unlockSkin(skinId)`，成功后立刻调用 `setCurrentSkin(skinId)`。
 - 切换：在已解锁的非当前皮肤上点击"使用"，调用 `setCurrentSkin(skinId)`；默认皮肤可重新切回但不展示兑换按钮。
-- 生效时机：玩家从个人中心返回主场景时（`loadMainGameScene()`）主场景会重新 `onLoad` → `applyCurrentCatSkin` → 加载新皮肤帧；当前不支持主场景内热切换（也不必要，PersonalCenterPage 入口本身就是一次性的离开 / 返回）。
+- 生效时机：玩家从个人中心返回主场景时（`loadMainGameScene()`）主场景会重新 `onLoad` → `applyCurrentCatSkin` → 加载新皮肤帧 + 音频；当前不支持主场景内热切换（也不必要，PersonalCenterPage 入口本身就是一次性的离开 / 返回）。
+
+### 4.3 皮肤音频资源约定
+
+`CatSkin.category` 字段（`cat / fox / boar / ...`）决定使用哪一组皮肤特征音；**同 category 共用一组音**，节省资源（例如 `default / ninja / pirate` 都用 `cat/`）。
+
+```text
+assets/resources/cat-audios/
+└── <category>/
+    ├── start.m4a   关卡开始 / 出场，对应 onLevelStart
+    ├── jump.m4a    跳跃成功，对应 onJumpSuccess
+    ├── attack.m4a  攻击成功，对应 onAttackSuccess
+    └── stun.m4a    眩晕，对应 onStun
+```
+
+- 加载：`game/catAudioLoader.ts` 的 `loadCatSkinAudio(category, fallback='cat')` 异步加载 4 个 `AudioClip`，缺失自动回退到 `cat/` 同名音；都缺则返回 null。
+- 注入：`GameController.applyCatSkinAudio(category)` → `CocosGameAudio.setSkinAudio(pack)` 写入 `skinClips` 覆盖层。
+- 播放：`CocosGameAudio.playLevelStart / playJump / playAttack / playStun` 通过 `resolveSkinClip(action, fallback)` 取音，**优先用 skinClips、再回退到 Inspector 通用 clip**。
+- 不受皮肤影响：`sfxCatch / sfxWin / sfxLose / sfxUi / bgmMain` 这 5 个仍走 Inspector 配置，作为通用游戏反馈音 / 背景乐。
+- 增加新 category：在 `assets/resources/cat-audios/` 下新建同名目录放 4 个 m4a 即可，无需改任何代码；`skinConfig` 中皮肤标记上该 category 后下次进入主场景即生效。
+- 平台注意：微信小游戏部分机型对 m4a 解码兼容性差异较大，必要时把全部 m4a 转 mp3 重新导入（同名 + 同 meta uuid 即可，`resources.load('cat-audios/cat/start', AudioClip)` 路径不含后缀）。
 
 ---
 

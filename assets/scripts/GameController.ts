@@ -54,6 +54,7 @@ import { ScoreManager } from './game/ScoreManager';
 import { loadPersonalCenterScene } from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
 import { loadCatSkinFrames } from './game/catSkinLoader';
+import { loadCatSkinAudio } from './game/catAudioLoader';
 import { loadAllRatSkinFrames } from './game/ratSkinLoader';
 import {
   defaultBtnCornerRadius,
@@ -1799,6 +1800,18 @@ export class GameController extends Component {
     const skin = getCatSkinById(this.scoreManager.getCurrentSkin());
     this.boardView?.setCatVisualTint(skin.visualTint);
     void this.applyCatSkinFrames(skin.id);
+    void this.applyCatSkinAudio(skin.category);
+  }
+
+  /**
+   * 按当前皮肤的 category 异步加载 `resources/cat-audios/<category>/{start,jump,attack,stun}.m4a`
+   * 并注入到 CocosGameAudio 作为覆盖层；缺失时 `loadCatSkinAudio` 内部回退到 `cat/`，再缺时
+   * `CocosGameAudio.resolveSkinClip` 兜底回到 Inspector 配置的通用 clip。
+   */
+  private async applyCatSkinAudio(category: string): Promise<void> {
+    const pack = await loadCatSkinAudio(category);
+    if (!this.gameAudio) return;
+    this.gameAudio.setSkinAudio(pack);
   }
 
   /**

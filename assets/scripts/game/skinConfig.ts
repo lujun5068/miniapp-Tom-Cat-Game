@@ -4,6 +4,7 @@ export interface CatSkin {
   price: number; // 兑换价格
   description: string; // 皮肤描述
   isDefault: boolean; // 是否为默认皮肤
+  category: string; // 分类
   visualTint: {
     r: number;
     g: number;
@@ -18,6 +19,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: 'Tom的经典形象',
     isDefault: true,
+    category: 'cat',
     visualTint: { r: 255, g: 255, b: 255 },
   },
   {
@@ -26,6 +28,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: '身手敏捷的忍者汤姆',
     isDefault: false,
+    category: 'cat',
     visualTint: { r: 110, g: 120, b: 155 },
   },
   {
@@ -34,6 +37,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: '勇敢的海盗汤姆',
     isDefault: false,
+    category: 'cat',
     visualTint: { r: 210, g: 85, b: 70 },
   },
   {
@@ -42,6 +46,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: '妲己MM',
     isDefault: false,
+    category: 'fox',
     visualTint: { r: 110, g: 120, b: 155 },
   },
   {
@@ -50,6 +55,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: '天蓬元帅',
     isDefault: false,
+    category: 'boar',
     visualTint: { r: 255, g: 214, b: 80 },
   },
 ];

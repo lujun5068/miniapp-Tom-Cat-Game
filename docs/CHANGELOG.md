@@ -8,6 +8,9 @@
 
 ## 2026-05-20
 
+### 音频
+- 皮肤特征音接入（按 category 切换 4 个动作音）：新增 `assets/resources/cat-audios/<category>/{start,jump,attack,stun}.m4a`（当前覆盖 `cat / fox / boar` 三类）与 `assets/scripts/game/catAudioLoader.ts`（`loadCatSkinAudio(category, fallback='cat')` 异步加载 4 个 `AudioClip`，缺失自动回退到 `cat/`）。`CocosGameAudio` 新增 `setSkinAudio(pack)` + 私有 `skinClips` 覆盖层 + `resolveSkinClip(action, fallback)`：`playLevelStart / playJump / playAttack / playStun` 都改为先取皮肤覆盖音、再回退到 Inspector 配置的通用 clip；不受皮肤影响的 `sfxCatch / sfxWin / sfxLose / sfxUi / bgmMain` 保持原行为。`GameController.applyCurrentCatSkin` 调用 `applyCatSkinAudio(skin.category)` 注入；`skinConfig.CatSkin.category` 字段决定使用哪一组（`default/ninja/pirate=cat`, `fox=fox`, `boar=boar`，同 category 共享一组音）。
+
 ### 业务规则
 - 猫跳跃 / 攻击 / 眩晕规则调整（[`assets/scripts/game/rules.ts`](../assets/scripts/game/rules.ts)）：
   - 新增 `isWallCell(grid, x, y)`：越界或位于地图外圈的障碍格视为"墙"（与 `BoardView.isMapOuterRing` 同一几何判据，对应视觉上的 `edge` 贴图）；内圈障碍是石头，可跳越。
