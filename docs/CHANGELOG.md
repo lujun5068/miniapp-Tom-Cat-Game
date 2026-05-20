@@ -8,6 +8,27 @@
 
 ## 2026-05-20
 
+### 存档系统硬化（皮肤丢失 bug 排查 & 修复）
+
+**问题症状**：玩家兑换并使用非默认皮肤后，重新进入小程序皮肤被重置 + 已兑换记录丢失，但积分和关卡进度都正常。
+
+**真正根因**（通过添加的调试日志确认）：`sanitizeUnlockedSkins` 旧实现尾部 `return [...new Set([DEFAULT_SKIN_ID, ...ids])]` 在微信小游戏 V8 / Cocos 编译产物下**对 Set 的 spread 不正确**——`[...new Set(...)]` 并未把 Set 展开为元素数组，而是把整个 `Set` 实例当成单个元素塞回数组。写盘时 `JSON.stringify(set)` 又把 Set 序列化为 `{}`，盘里出现 `unlockedSkins: [{}, "boar"]`；下次读回 sanitize 走同样路径，整个数组被滚雪球式污染成 `[Set, "boar", "fox"]`。最终：除 default 外的解锁记录看似被全部清空，玩家需要重新兑换。
+
+**完整修复**（[`assets/scripts/game/ScoreManager.ts`](../assets/scripts/game/ScoreManager.ts)）：
+
+1. **主因修复 — 显式 dedupe 不依赖 Set spread**：`sanitizeUnlockedSkins` 改写为标准 for-loop + `indexOf` 去重，完全避开 `[...new Set(...)]` 这种在某些 JS 引擎 / 编译目标下行为异常的写法。代码里加大段注释解释为什么不用 Set spread。
+2. **附带 hardening 1 — `loadFromDisk` 不再覆盖磁盘**：parse 错误 / 版本不识别 / sanitize 异常一律**只在内存里用 default 兜底，绝不再 `saveToDisk` 覆盖磁盘**。原实现的 catch-all 会用 `defaultSave()` 覆盖盘里的数据，任何瞬时异常都会清空存档。
+3. **附带 hardening 2 — `sanitizeUnlockedSkins` 放宽为"形式校验"**：保留所有合法 string id（包含 `default`），不再要求 id ∈ `catSkins`。这样未来调整皮肤目录 / 改名 / 临时下架时不会误删玩家拥有的皮肤。
+4. **附带 hardening 3 — `sanitizeCurrentSkin` 同时要求 id ∈ unlockedSkins ∩ catSkins**：玩家选中的皮肤被临时下架时 fallback 到 default，但 unlockedSkins 里仍保留该 id 不会被擦除。
+5. **异常路径保留 `console.warn`**：`loadFromDisk` 的 JSON.parse 失败 / 版本不识别 / sanitize 异常 + `saveToDisk` 写盘失败，仍打印 `[ScoreManager] ...` warn 供线上回流定位。开发期定位本次 bug 的 routine `console.log` 已在确认修复后撤掉，避免污染线上 console。
+
+**对已被污染的存档自愈**：被旧版污染的玩家盘里是 `unlockedSkins: [{}, "boar"]` 这类数据；新版 sanitize 会把 `{}` 过滤掉、保留有效 string，结果是 `["default", "boar"]`，本地数据自动恢复无需迁移。
+
+**调试入口**（控制台直接跑）：
+```js
+wx.getStorageSync('cat-game-score-v1')   // 看盘里实际 JSON 字符串
+```
+
 ### 包体 / 分包
 - 非默认皮肤拆 `skin-pack` 分包（中期首包瘦身方案 step1）：
   - 资源迁移（使用安全脚本 `safe-move-skins.ps1`，单文件 Move + 移前移后文件数校验 + .meta 一起搬保 uuid 不变）：

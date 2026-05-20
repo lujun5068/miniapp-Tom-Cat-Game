@@ -87,25 +87,42 @@ export class ScoreManager {
   }
 
   private loadFromDisk(): void {
+    /**
+     * 关键设计：parse / sanitize 失败时**只在内存里用 default 兜底**，
+     * 绝对不再 `saveToDisk()` 覆盖磁盘——否则任何瞬时异常都会清空玩家存档。
+     * 玩家本次会话以默认值玩；下次启动若问题已自愈，盘里的旧数据仍可恢复。
+     */
+    const raw = storageGetItem(KEY);
+    if (!raw) {
+      this.saveData = defaultSave();
+      this.saveToDisk();
+      return;
+    }
+    let parsed: Partial<ScoreSaveV2 | ScoreSaveLegacyV1> | null = null;
     try {
-      const raw = storageGetItem(KEY);
-      if (!raw) {
+      parsed = JSON.parse(raw) as Partial<ScoreSaveV2 | ScoreSaveLegacyV1>;
+    } catch (err) {
+      console.warn(
+        '[ScoreManager] loadFromDisk: JSON.parse failed, keeping disk untouched',
+        err,
+      );
+      this.saveData = defaultSave();
+      return;
+    }
+    try {
+      if (parsed && parsed.version === 1) {
+        this.saveData = this.migrateFromV1(parsed as ScoreSaveLegacyV1);
+        this.saveToDisk();
+        return;
+      }
+      if (!parsed || parsed.version !== 2) {
+        console.warn(
+          `[ScoreManager] loadFromDisk: unknown version=${parsed?.version}, using default in-memory only (disk preserved)`,
+        );
         this.saveData = defaultSave();
-        this.saveToDisk();
         return;
       }
-      const o = JSON.parse(raw) as Partial<ScoreSaveV2 | ScoreSaveLegacyV1>;
-      if (o.version === 1) {
-        this.saveData = this.migrateFromV1(o as ScoreSaveLegacyV1);
-        this.saveToDisk();
-        return;
-      }
-      if (o.version !== 2) {
-        this.saveData = defaultSave();
-        this.saveToDisk();
-        return;
-      }
-      const saved = o as Partial<ScoreSaveV2>;
+      const saved = parsed as Partial<ScoreSaveV2>;
       this.saveData = {
         version: 2,
         availableScore: this.sanitizeScore(saved.availableScore),
@@ -125,9 +142,12 @@ export class ScoreManager {
       if (this.saveData.totalEarnedScore < this.saveData.availableScore) {
         this.saveData.totalEarnedScore = this.saveData.availableScore;
       }
-    } catch {
+    } catch (err) {
+      console.warn(
+        '[ScoreManager] loadFromDisk: sanitize failed, using default in-memory only (disk preserved)',
+        err,
+      );
       this.saveData = defaultSave();
-      this.saveToDisk();
     }
   }
 
@@ -164,8 +184,8 @@ export class ScoreManager {
   private saveToDisk(): void {
     try {
       storageSetItem(KEY, JSON.stringify(this.saveData));
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.warn('[ScoreManager] saveToDisk failed', err);
     }
   }
 
@@ -347,23 +367,57 @@ export class ScoreManager {
       : '';
   }
 
+  /**
+   * 校验存档里的"已解锁皮肤 id 列表"：
+   * - 仅做形式校验（必须是 string，长度 > 0），**不再要求 id ∈ catSkins**。
+   *   这样允许玩家在版本升级 / 皮肤临时下架 / 重命名场景下保留历史解锁记录，
+   *   未来该 id 重新出现在 `catSkins` 时无需重新兑换。
+   * - 注入恶意 id 的风险已被运行时 fallback 覆盖：BoardView 找不到对应皮肤帧
+   *   会 fallback 到 default；`sanitizeCurrentSkin` 也只接受 catSkins 中可用的 id。
+   * - 始终强制包含 DEFAULT_SKIN_ID，保证主游戏总有可用皮肤。
+   *
+   * **重要：用显式 indexOf 去重而非 `[...new Set([...])]`**。
+   * 后者在微信小游戏 V8 / Cocos 编译产物下 spread 一个 Set 时不会正确展开，
+   * 反而把整个 `Set` 实例当成单个数组元素塞回去；写盘时 `JSON.stringify(set)`
+   * 又得到 `{}`，下次读回来 sanitize 再走同样路径，整个 unlockedSkins 数组
+   * 会被滚雪球式污染成 `[Set, ...]` / 盘里看到 `[{}, ...]`，玩家实际皮肤丢失。
+   * 见 2026-05-20 修复记录与 docs/CHANGELOG.md。
+   */
   private sanitizeUnlockedSkins(value: unknown): string[] {
-    const knownSkinIds = new Set(catSkins.map((skin) => skin.id));
     const input = Array.isArray(value) ? value : [DEFAULT_SKIN_ID];
-    const ids = input.filter(
-      (id): id is string => typeof id === 'string' && knownSkinIds.has(id),
-    );
-    return [...new Set([DEFAULT_SKIN_ID, ...ids])];
+    const result: string[] = [DEFAULT_SKIN_ID];
+    for (const id of input) {
+      if (
+        typeof id === 'string' &&
+        id.length > 0 &&
+        result.indexOf(id) === -1
+      ) {
+        result.push(id);
+      }
+    }
+    return result;
   }
 
+  /**
+   * 校验"当前选中皮肤 id"：
+   * - 必须既在 `unlockedSkins` 里（玩家拥有），又在 `catSkins` 里（代码层支持），
+   *   否则 fallback 到 default。这样如果玩家选中的皮肤被开发临时下架，主游戏不会
+   *   引用到不存在的资源、但 unlockedSkins 里仍然保留该 id（见上方说明）。
+   */
   private sanitizeCurrentSkin(
     value: unknown,
     unlockedSkins: unknown,
   ): string {
     const unlocked = this.sanitizeUnlockedSkins(unlockedSkins);
-    return typeof value === 'string' && unlocked.includes(value)
-      ? value
-      : DEFAULT_SKIN_ID;
+    const knownSkinIds = new Set(catSkins.map((skin) => skin.id));
+    if (
+      typeof value === 'string' &&
+      unlocked.includes(value) &&
+      knownSkinIds.has(value)
+    ) {
+      return value;
+    }
+    return DEFAULT_SKIN_ID;
   }
 
   private sanitizeHistory(value: unknown): ScoreHistoryEntry[] {
