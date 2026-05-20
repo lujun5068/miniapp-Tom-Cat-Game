@@ -275,10 +275,13 @@ assets/resources/rat_skins/
 | --- | --- | --- | --- | --- |
 | `personal-center` | `assets/personal-center/` | `PersonalCenterPage.scene` | `subpackage` | `sceneRoutes.loadPersonalCenterScene()` |
 | `audio-stream` | `assets/audio-stream/` | `bgm_main_loop.m4a` (~490KB) | `subpackage` | `GameController.applyStreamingBgm()` |
-| `resources`（默认 Resources Bundle） | `assets/resources/` | `cat-skins/`、`cat-audios/`、`rat_skins/` | （默认随首包） | `resources.load*` |
+| `skin-pack` | `assets/skin-pack/` | `cat-skins/{ninja,pirate,golden,fox,boar}` + `cat-audios/{fox,boar}` | `subpackage` | `catSkinLoader.loadSkinPackBundle()` / `catAudioLoader.loadSkinPackBundle()` |
+| `resources`（默认 Resources Bundle） | `assets/resources/` | `cat-skins/default/`、`cat-audios/cat/`、`rat_skins/` | （默认随首包） | `resources.load*` |
 | `internal` / `start-scene` / `main` | Cocos 自动生成 | 引擎依赖 + 主场景 + 公共脚本 | （首包） | — |
 
 > Bundle 内只包含**该目录树内**的资源；外部资源（脚本、被场景引用的图 / 音）默认仍在主包。仅把场景丢进 bundle 目录而引用的脚本 / 资源散在外面，则分包目录会非常小、首包不会瘦身。
+>
+> **重要**：`.meta` 里写的 `compressionType.wechatgame: 'subpackage'` 字段 Cocos Creator 在构建时**不会自动读取**——必须在 Creator 资产管理器选中目录后，右侧 Inspector 里手动把"压缩类型"下拉框改为「小游戏分包」并保存，构建才会真的输出到 `build/wechatgame/subpackages/`。
 
 ### 10.2 BGM 分包工作流程（`audio-stream`）
 
@@ -288,18 +291,44 @@ assets/resources/rat_skins/
 4. `GameController.applyStreamingBgm()` 在 `onLoad` 中异步：`assetManager.loadBundle('audio-stream')` → `bundle.load('bgm_main_loop', AudioClip)` → `gameAudio.setBgmClip(clip)`；失败仅 `console.warn`，BGM 静默不影响游戏。
 5. `CocosGameAudio.setBgmClip` 写入 `bgm.clip` 并视 `bgmEnabled && unlocked` 决定是否立即播放，所以"分包加载完成"与"首次用户手势"先后顺序都能 work。
 
-### 10.3 待施行优化（按性价比排序）
+### 10.3 皮肤分包工作流程（`skin-pack`）
 
-按 `build/wechatgame/` 实测数据，主包 ~3.7MB 的剩余大头是：
+`skin-pack` 同时承载非默认猫皮肤帧 + 非 `cat` category 的猫音效，由 `catSkinLoader.ts` 与 `catAudioLoader.ts` 各自维护句柄缓存共同使用同一份分包内容。
+
+**资源边界**
+
+| 类型 | 留在 `resources/`（首包） | 移到 `skin-pack/`（分包） |
+| --- | --- | --- |
+| 猫帧 | `cat-skins/default/` | `cat-skins/{ninja,pirate,golden,fox,boar}/` |
+| 猫音效 | `cat-audios/cat/` | `cat-audios/{fox,boar}/` |
+| 老鼠帧 | `rat_skins/`（全） | — |
+
+> 保留 `default` + `cat` 在 `resources/` 是兜底底线：任何"分包没下到 / 没勾选 / 配置错误"的极端情况，玩家仍能用默认皮肤跑完所有关卡，不会黑屏 / 卡机。
+
+**加载流程**（适用于猫皮肤帧 / 猫音效两类）
+
+1. 调用方仍是 `loadCatSkinFrames(skinId)` / `loadCatSkinAudio(category)`，签名零变化。
+2. Loader 内部根据 `skinId === 'default'` / `category === 'cat'` 路由到 `resources` 或 `skin-pack` Bundle。
+3. 首次访问非默认皮肤时通过 `skinPackBundlePromise`（模块级单例）触发 `assetManager.loadBundle('skin-pack')`，整个会话只下载一次；同模块内后续 `loadDir / load` 调用全部命中缓存。
+4. 失败级联兜底：
+   - 单文件缺 → 同 category 下一个；
+   - 该 category 4 个全缺 → fallback 到 `default` 帧 / `cat` 音；
+   - `skin-pack` Bundle 整体加载失败（网络异常 / 分包未上传）→ 等价于"4 个全缺"，自动走兜底；
+   - 兜底也没有 → 返回 null / 空数组，由 `BoardView` 用单帧 `sfCat` 或 `CocosGameAudio.resolveSkinClip` 用通用 Inspector clip。
+5. 用户体验：进入主场景默认皮肤时不触发分包下载；切换到非默认皮肤或进入个人中心查看预览时才下载（5 个非默认预览只触发一次）。
+
+### 10.4 待施行优化（按性价比排序）
+
+按 `build/wechatgame/` 实测数据，主包剩余大头是 `cocos-js/` 与脚本 `src/`：
 
 | 候选项 | 预计减小 | 落地位置 |
 | --- | --- | --- |
-| 非默认猫皮肤拆 `skin-pack` 分包 | ~700KB | `assets/resources/cat-skins/{golden,ninja,pirate,fox,boar}` → `assets/skin-pack/cat-skins/`，新 bundle + subpackage，改 `catSkinLoader` 走 `loadBundle` |
-| 非 `cat` 类皮肤音拆同上 | ~50KB | `cat-audios/{fox,boar}` → 同上，改 `catAudioLoader` |
-| Cocos 引擎模块裁剪 | 100–300KB | 项目设置 → 模块设置（见 §10.4） |
+| Cocos 引擎模块裁剪 | 100–300KB | 项目设置 → 功能裁剪（见 §10.5） |
 | 按 bundle 拆分脚本 | 50–100KB | Creator 构建面板高级选项（开启后只被分包用到的脚本跟分包走） |
+| 老鼠帧独立分包 | ~80KB | 当前老鼠帧固定 4 套都加载，玩家无法选；如未来扩展为皮肤化才有必要做 |
+| 字体子集 / 压缩 | 取决于字体 | 当前未使用自定义字体，无优化空间 |
 
-### 10.4 Cocos 引擎模块裁剪指引（必须在 Creator UI 里操作）
+### 10.5 Cocos 引擎模块裁剪指引（必须在 Creator UI 里操作）
 
 | 步骤 | 操作 |
 | --- | --- |
@@ -311,15 +340,30 @@ assets/resources/rat_skins/
 
 > 保守做法：先一次只关 2-3 个明显无关的模块，预览跑一遍主场景 + 个人中心，确认没报"未定义符号"再继续关下一批。
 
-### 10.5 构建发布面板分包配置自检
+### 10.6 构建发布面板分包配置自检
 
 每次构建前在 Creator 构建发布面板里确认：
 
-- 平台选 `wechatgame`。
-- 找到「分包配置 / SubPackages」（位置随版本不同，可能在「高级」折叠区）。
-- 列表里应出现：
-  - `personal-center`（路径 `personal-center`，✅ 勾选 subpackage）
-  - `audio-stream`（路径 `audio-stream`，✅ 勾选 subpackage）
-  - **不应**出现 `main` 被勾成 subpackage（之前构建出现的 `subpackages/main/` 0.6KB 即此误标记）；若有，取消勾选。
-- 改完点「Build」（不是「Make」），让 manifest 重新生成。
-- 构建成功后用 PowerShell 计算 `build/wechatgame/subpackages/*` 目录大小核对。
+**包含的 Bundles**：勾选全部，包括 `personal-center / audio-stream / skin-pack / resources`。任何一个没勾选都不会被构建出来。
+
+**主包压缩类型**：必须是「合并所有 JSON」（推荐）或「无压缩」。**绝对不能选「小游戏分包」**——主包本身不是 subpackage，选错会出现诡异的 `subpackages/main/` 0.6KB 空目录，且微信小游戏启动失败。
+
+**各分包压缩类型**（在 Creator 资产管理器选中目录后，Inspector 右侧设置，**`.meta` 字段不被构建器读取，必须 UI 操作**）：
+
+| 目录 | 压缩类型 | 备注 |
+| --- | --- | --- |
+| `assets/personal-center` | **小游戏分包** | 个人中心 scene |
+| `assets/audio-stream` | **小游戏分包** | BGM |
+| `assets/skin-pack` | **小游戏分包** | 非默认皮肤帧 + 非 cat 音效 |
+| `assets/resources` | 合并所有 JSON | 默认 Resources Bundle，**不能改成分包**否则 `resources.load*` 失效 |
+
+**构建后核对**（PowerShell）：
+```powershell
+$b='C:\lujun-work\lujun-self\Tom-cat-game\Cocos-Tom_Cat\build\wechatgame'
+Get-ChildItem -Directory "$b\subpackages" | ForEach-Object {
+  $size = (Get-ChildItem -Recurse -File $_.FullName | Measure-Object Length -Sum).Sum
+  '{0,10:N1} KB  {1}' -f ($size/1024), $_.Name
+}
+```
+
+预期看到：`personal-center / audio-stream / skin-pack` 三个目录，**不应**出现 `main`。如出现 `main` 说明主包压缩类型还没改对。改完点「Build」（不是「Make」），让 manifest 重新生成。

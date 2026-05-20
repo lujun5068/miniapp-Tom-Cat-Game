@@ -1,0 +1,39 @@
+{
+  "ver": "1.2.0",
+  "importer": "directory",
+  "imported": true,
+  "uuid": "b1e2d3c4-5a6b-47c8-9d0e-1f2a3b4c5d6e",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "isBundle": true,
+    "bundleName": "skin-pack",
+    "priority": 1,
+    "compressionType": {
+      "wechatgame": "subpackage",
+      "android": "merge_dep",
+      "ios": "merge_dep",
+      "alipay-mini-game": "merge_dep",
+      "baidugame": "merge_dep",
+      "bytedance-mini-game": "merge_dep",
+      "huawei-quick-game": "merge_dep",
+      "link-sure-mini-game": "merge_dep",
+      "oppo-mini-game": "merge_dep",
+      "qq-play": "merge_dep",
+      "qtt-mini-game": "merge_dep",
+      "vivo-mini-game": "merge_dep",
+      "xiaomi-quick-game": "merge_dep",
+      "smart-mini-game": "merge_dep",
+      "migu-mini-game": "merge_dep",
+      "windows": "merge_dep",
+      "mac": "merge_dep",
+      "html5": "merge_dep"
+    },
+    "isRemoteBundle": {
+      "wechatgame": false
+    },
+    "isZip": false,
+    "inlineSpriteFrames": false,
+    "bundleConfigID": "dcVn9m4sxNG7hcOOYColw0"
+  }
+}

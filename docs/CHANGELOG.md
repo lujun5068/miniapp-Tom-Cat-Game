@@ -9,6 +9,21 @@
 ## 2026-05-20
 
 ### 包体 / 分包
+- 非默认皮肤拆 `skin-pack` 分包（中期首包瘦身方案 step1）：
+  - 资源迁移（使用安全脚本 `safe-move-skins.ps1`，单文件 Move + 移前移后文件数校验 + .meta 一起搬保 uuid 不变）：
+    - `assets/resources/cat-skins/{ninja,pirate,golden,fox,boar}` → `assets/skin-pack/cat-skins/<id>/`
+    - `assets/resources/cat-audios/{fox,boar}` → `assets/skin-pack/cat-audios/<category>/`
+    - `default` 猫皮肤、`cat` 音效保留在 `resources/` 兜底（保证首包永远可用，避免分包失败时游戏崩溃）。
+  - Bundle 配置：新增 `assets/skin-pack.meta`，`userData.isBundle: true / bundleName: 'skin-pack' / compressionType.wechatgame: 'subpackage'`，其他平台 `merge_dep`。
+  - Loader 路由改造（[`catSkinLoader.ts`](../assets/scripts/game/catSkinLoader.ts) / [`catAudioLoader.ts`](../assets/scripts/game/catAudioLoader.ts)）：
+    - 新增模块级 `skinPackBundlePromise` 缓存 `assetManager.loadBundle('skin-pack')` 句柄，整个会话内只触发一次实际下载；加载失败时缓存 `null`，避免反复重试；下次进入主场景或刷新会重试。
+    - `loadActionFrames(skinId, dir)`：`skinId === 'default'` 走 `resources.loadDir`，其他走 `bundle.loadDir`；
+    - `loadOneClip(category, action)`：`category === 'cat'` 走 `resources.load`，其他走 `bundle.load`；
+    - 失败级联兜底：单文件缺 → 同 category 下一个；4 个全缺或 bundle 加载失败 → fallback 到 `default` 皮肤 / `cat` 音效；都没有 → 返回 null 由 `BoardView` / `CocosGameAudio.resolveSkinClip` 走更上层兜底。
+  - 调用方零改动：`loadCatSkinFrames / loadCatSkinAudio / loadCatSkinStartFrame` 签名不变，`GameController.applyCatSkinFrames / applyCatSkinAudio` 与 `PersonalCenterPage.fetchSkinPreviewFrame` 仍是 `await` 调用；首次进入个人中心时 5 个非默认皮肤预览会触发 `skin-pack` 分包下载（一次性），之后 `Cocos AssetManager` 内部去重，再访问命中缓存。
+  - 预期效果：`assets/resources/` 主包部分体积砍掉非默认皮肤帧 + 非 cat 音效（按 build 实测 ~250-330KB 中相当比例），转入 `subpackages/skin-pack/`，玩家未切换到非默认皮肤前完全不下载。
+  - **构建注意**：Inspector 里要把 `assets/skin-pack` 目录的 "压缩类型" 在 Cocos Creator 资产管理器中显式选为「小游戏分包」并保存（同 audio-stream / personal-center 的操作，详见 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §10）。
+
 - BGM 拆 `audio-stream` 分包，目标：把 ~490KB 的 `bgm_main_loop.m4a` 从首包剥离（短期首包瘦身方案 step1）。
   - 资源迁移：`assets/audio/bgm_main_loop.m4a(.meta)` → `assets/audio-stream/bgm_main_loop.m4a(.meta)`（保留原 uuid `20a59def-...` 避免历史引用断链）。
   - Bundle 配置：新增 `assets/audio-stream.meta`，`userData.isBundle: true / bundleName: 'audio-stream' / compressionType.wechatgame: 'subpackage'`，其他平台 `merge_dep`。
