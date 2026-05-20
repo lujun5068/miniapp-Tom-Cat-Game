@@ -10,11 +10,18 @@
 
 ### 皮肤 attack 帧组
 
-- 猫皮肤资源新增 `attack/` 子目录（`default / ninja / pirate / golden / boar` 各 5 帧；`fox` 暂未提供）。
+- 猫皮肤资源新增 `attack/` 子目录（`default / ninja / pirate / boar` 各 5 帧；`fox` 暂未提供）。
 - [`catSkinLoader.ts`](../assets/scripts/game/catSkinLoader.ts) `CatSkinFrames` 增加 `attack: SpriteFrame[]` 字段。fallback 策略**特殊**：当前皮肤缺 `attack/` 时**直接复用本皮肤 `walkH`**（而不是 default 皮肤的 attack），避免跨皮肤借用造成"攻击瞬间换猫"的违和感；本皮肤连 walkH 都没有时才走通用 fallback 拉 default。
 - [`BoardView.ts`](../assets/scripts/BoardView.ts) `CatAnimKey` 增加 `'attack'`；`configureCatFrameAnimations` 新参数 `framesAttack`；`resolveCatDisplay` 检测到 `anim.getActiveMotionKind() === 'attack'` 时切到 attack 帧组（stripOf 也兜底空数组 → start）。
 - [`GameController.ts`](../assets/scripts/GameController.ts) `applyCatSkinFrames` 把 `frames.attack` 透传给 BoardView；onLoad 阶段的占位 configure 也补 `framesAttack: []` 保持类型一致。
-- 验证矩阵：`default/ninja/pirate/golden/boar` 攻击播 attack 帧；`fox` 攻击复用 walkH，仍能正常播帧动画无空状态。
+- 验证矩阵：`default/ninja/pirate/boar` 攻击播 attack 帧；`fox` 攻击复用 walkH，仍能正常播帧动画无空状态。
+
+### 清理未使用的 golden 皮肤资源
+
+- 历史上 `cat-skins/golden/` 在 `skinConfig.catSkins` 数组里**没有对应条目**，代码也无任何 `'golden'` 硬编码，资源虽迁入 `skin-pack/` 分包但永远不会被加载——属于纯死资源占位。
+- 删除路径：`assets/skin-pack/cat-skins/golden/`（17 张 png + 各级 `.meta`，共 39 个文件）+ `assets/skin-pack/cat-skins/golden.meta`（顶层目录 meta）。
+- 同步清理代码注释 / 文档里的 golden 字样（`catSkinLoader.ts` / `catAudioLoader.ts` 文件头、`SCORE_AND_SKIN.md` §4 §7 §10、`PROJECT_STATUS.md` 已完成清单）；历史日志 §"包体 / 分包"中提到的 `{ninja,pirate,golden,fox,boar}` 是写入当下的真实迁移记录，保留以反映项目演进。
+- 后续如要再加金色皮肤主题，建议沿用 ninja/pirate 的命名约定：先在 `skinConfig.catSkins` 加条目（含 `category`、`price`、`visualTint`），再把帧资源放回 `skin-pack/cat-skins/golden/{start,walk1,walk2,xuanyun,attack}/`，无需改任何 loader / BoardView 代码。
 
 ### 存档系统硬化（皮肤丢失 bug 排查 & 修复）
 

@@ -5,7 +5,7 @@ import { AudioClip, assetManager, resources, type AssetManager } from 'cc';
  *
  * 资源拆分（首包瘦身策略，见 docs/SCORE_AND_SKIN.md §10）：
  * - `cat/` category 的 4 个动作音在 `assets/resources/cat-audios/cat/`，随首包加载
- *   （default/ninja/pirate/golden 都用 `cat`，作为兜底永远可用）。
+ *   （default/ninja/pirate 都用 `cat`，作为兜底永远可用）。
  * - 其余 category（当前 `fox / boar`，未来新增非 `cat` 类）在
  *   `assets/skin-pack/cat-audios/<category>/`，与非默认猫皮肤帧共用 `skin-pack` Bundle
  *   （微信小游戏 subpackage），运行时 `assetManager.loadBundle('skin-pack')` 异步加载。

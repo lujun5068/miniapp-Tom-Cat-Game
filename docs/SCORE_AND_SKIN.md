@@ -102,7 +102,7 @@ export interface CatSkin {
 }
 ```
 
-当前 4 个皮肤：`default`（免费，初始可用）/ `golden`（100）/ `ninja`（150）/ `pirate`（200）。`visualTint` 仍保留，用于在帧组之外叠加色调（也可作为 fallback 的最低可见反馈）。
+当前 5 个皮肤：`default`（免费，初始可用）/ `ninja` / `pirate` / `fox` / `boar`，价格 / 描述以 [`game/skinConfig.ts`](../assets/scripts/game/skinConfig.ts) `catSkins` 数组为准。`visualTint` 仍保留，用于在帧组之外叠加色调（也可作为 fallback 的最低可见反馈）。
 
 ### 4.1 资源目录约定
 
@@ -205,7 +205,7 @@ setupWechatShare({
 
 ## 7. 当前保留限制
 
-1. **皮肤帧组体积较精简**：当前 `default / golden / ninja / pirate` 四套都是 `start` 1 帧 + `walk1` 5 帧 + `walk2` 4 帧 + `xuanyun` 2 帧的小动画；如需更连贯的待机 / 眩晕过渡，可往 `assets/resources/cat-skins/<skinId>/{start,xuanyun}/` 内补图，无需改代码。
+1. **皮肤帧组体积较精简**：5 套皮肤（`default / ninja / pirate / fox / boar`）大多是 `start` 1 帧 + `walk1` 5–6 帧 + `walk2` 4–6 帧 + `xuanyun` 2 帧 + `attack` 5 帧（`fox` 暂未提供 attack，运行时自动复用其 walk1）的小动画；如需更连贯的待机 / 眩晕 / 攻击过渡，可往 `assets/skin-pack/cat-skins/<skinId>/{start,xuanyun,attack}/`（或 default 走 `resources/cat-skins/default/...`）内补图，无需改代码。
 2. **失败积分反作弊较简单**：仅按"每日入账次数 ≤ 10"做频控，没有最低游戏时长 / 单局有效输入次数门槛；如出现自动化挂机失败需要再叠加策略。
 3. **积分流水非审计账本**：只保留最近 50 条，超出会被截断；不适合作为对账依据。
 4. **本地存档可被篡改**：积分系统纯客户端实现，未做存档签名 / 服务端校验。后续如果接入排行榜、活动奖励、账号体系或付费内容再考虑加防护。
@@ -275,7 +275,7 @@ assets/resources/rat_skins/
 | --- | --- | --- | --- | --- |
 | `personal-center` | `assets/personal-center/` | `PersonalCenterPage.scene` | `subpackage` | `sceneRoutes.loadPersonalCenterScene()` |
 | `audio-stream` | `assets/audio-stream/` | `bgm_main_loop.m4a` (~490KB) | `subpackage` | `GameController.applyStreamingBgm()` |
-| `skin-pack` | `assets/skin-pack/` | `cat-skins/{ninja,pirate,golden,fox,boar}` + `cat-audios/{fox,boar}` | `subpackage` | `catSkinLoader.loadSkinPackBundle()` / `catAudioLoader.loadSkinPackBundle()` |
+| `skin-pack` | `assets/skin-pack/` | `cat-skins/{ninja,pirate,fox,boar}` + `cat-audios/{fox,boar}` | `subpackage` | `catSkinLoader.loadSkinPackBundle()` / `catAudioLoader.loadSkinPackBundle()` |
 | `resources`（默认 Resources Bundle） | `assets/resources/` | `cat-skins/default/`、`cat-audios/cat/`、`rat_skins/` | （默认随首包） | `resources.load*` |
 | `internal` / `start-scene` / `main` | Cocos 自动生成 | 引擎依赖 + 主场景 + 公共脚本 | （首包） | — |
 
@@ -299,7 +299,7 @@ assets/resources/rat_skins/
 
 | 类型 | 留在 `resources/`（首包） | 移到 `skin-pack/`（分包） |
 | --- | --- | --- |
-| 猫帧 | `cat-skins/default/` | `cat-skins/{ninja,pirate,golden,fox,boar}/` |
+| 猫帧 | `cat-skins/default/` | `cat-skins/{ninja,pirate,fox,boar}/` |
 | 猫音效 | `cat-audios/cat/` | `cat-audios/{fox,boar}/` |
 | 老鼠帧 | `rat_skins/`（全） | — |
 

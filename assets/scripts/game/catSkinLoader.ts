@@ -3,7 +3,7 @@
  *
  * 资源拆分（首包瘦身策略，见 docs/SCORE_AND_SKIN.md §10）：
  * - `default` 皮肤的帧在 `assets/resources/cat-skins/default/`，随首包加载（兜底保证主游戏永远可用）。
- * - 其余皮肤（`ninja / pirate / golden / fox / boar` 及后续新增）在 `assets/skin-pack/cat-skins/<id>/`，
+ * - 其余皮肤（`ninja / pirate / fox / boar` 及后续新增）在 `assets/skin-pack/cat-skins/<id>/`，
  *   `skin-pack` Bundle 在微信小游戏构建里配置为 subpackage，运行时通过
  *   `assetManager.loadBundle('skin-pack')` 异步拉取并按需 `bundle.loadDir(...)`。
  *
