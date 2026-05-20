@@ -8,8 +8,17 @@
 
 ## 2026-05-20
 
+### 包体 / 分包
+- BGM 拆 `audio-stream` 分包，目标：把 ~490KB 的 `bgm_main_loop.m4a` 从首包剥离（短期首包瘦身方案 step1）。
+  - 资源迁移：`assets/audio/bgm_main_loop.m4a(.meta)` → `assets/audio-stream/bgm_main_loop.m4a(.meta)`（保留原 uuid `20a59def-...` 避免历史引用断链）。
+  - Bundle 配置：新增 `assets/audio-stream.meta`，`userData.isBundle: true / bundleName: 'audio-stream' / compressionType.wechatgame: 'subpackage'`，其他平台 `merge_dep`。
+  - 解开主场景依赖：删除 `scene-001.scene` 里的 `clipBgmMain` 字段（含 uuid 引用），让构建依赖图不再把 bgm 拖回主场景所在的 `start-scene/` bundle。
+  - 代码改造（[`assets/scripts/audio/CocosGameAudio.ts`](../assets/scripts/audio/CocosGameAudio.ts)）：`GameAudioClipBundle` 去掉 `bgmMain` 字段；新增私有 `bgmClip: AudioClip|null` 与 `setBgmClip(clip)`；`tryPlayBgm / syncBgmPlayback` 改读 `this.bgmClip`，内部已处理"clip 注入晚于首次用户手势"的时序，注入即视情况自动 `play`。
+  - 加载入口（[`assets/scripts/GameController.ts`](../assets/scripts/GameController.ts)）：删 `@property clipBgmMain` 与构造时 `bgmMain` 入参；新增 `applyStreamingBgm()`：`assetManager.loadBundle('audio-stream')` → `bundle.load('bgm_main_loop', AudioClip)` → `gameAudio.setBgmClip(clip)`，`onLoad` 完成 `CocosGameAudio` 构造后异步 `void this.applyStreamingBgm()`。失败仅 `console.warn`，游戏其余流程不依赖 BGM；加载完成时组件可能已销毁，故注入前 `isValid` 防御。
+  - 文档：[`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §10 新增"首包瘦身与分包策略"章节，记录当前 4 个 Bundle 划分（main / personal-center / audio-stream / resources）、`audio-stream` 完整流程、待施行优化清单（非默认皮肤资源 / 引擎模块裁剪 / 脚本按 bundle 拆分）以及 Creator 构建发布面板自检步骤；同步更新 README 中"音频"章节描述。
+
 ### 音频
-- 皮肤特征音接入（按 category 切换 4 个动作音）：新增 `assets/resources/cat-audios/<category>/{start,jump,attack,stun}.m4a`（当前覆盖 `cat / fox / boar` 三类）与 `assets/scripts/game/catAudioLoader.ts`（`loadCatSkinAudio(category, fallback='cat')` 异步加载 4 个 `AudioClip`，缺失自动回退到 `cat/`）。`CocosGameAudio` 新增 `setSkinAudio(pack)` + 私有 `skinClips` 覆盖层 + `resolveSkinClip(action, fallback)`：`playLevelStart / playJump / playAttack / playStun` 都改为先取皮肤覆盖音、再回退到 Inspector 配置的通用 clip；不受皮肤影响的 `sfxCatch / sfxWin / sfxLose / sfxUi / bgmMain` 保持原行为。`GameController.applyCurrentCatSkin` 调用 `applyCatSkinAudio(skin.category)` 注入；`skinConfig.CatSkin.category` 字段决定使用哪一组（`default/ninja/pirate=cat`, `fox=fox`, `boar=boar`，同 category 共享一组音）。
+- 皮肤特征音接入（按 category 切换 4 个动作音）：新增 `assets/resources/cat-audios/<category>/{start,jump,attack,stun}.m4a`（当前覆盖 `cat / fox / boar` 三类）与 `assets/scripts/game/catAudioLoader.ts`（`loadCatSkinAudio(category, fallback='cat')` 异步加载 4 个 `AudioClip`，缺失自动回退到 `cat/`）。`CocosGameAudio` 新增 `setSkinAudio(pack)` + 私有 `skinClips` 覆盖层 + `resolveSkinClip(action, fallback)`：`playLevelStart / playJump / playAttack / playStun` 都改为先取皮肤覆盖音、再回退到 Inspector 配置的通用 clip；不受皮肤影响的 `sfxCatch / sfxWin / sfxLose / sfxUi` 保持原行为；主循环 BGM 改由 `audio-stream` 分包异步加载（见上一节）。`GameController.applyCurrentCatSkin` 调用 `applyCatSkinAudio(skin.category)` 注入；`skinConfig.CatSkin.category` 字段决定使用哪一组（`default/ninja/pirate=cat`, `fox=fox`, `boar=boar`，同 category 共享一组音）。
 
 ### 业务规则
 - 猫跳跃 / 攻击 / 眩晕规则调整（[`assets/scripts/game/rules.ts`](../assets/scripts/game/rules.ts)）：

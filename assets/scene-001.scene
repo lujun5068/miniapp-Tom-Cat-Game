@@ -283,10 +283,6 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "clipBgmMain": {
-      "__uuid__": "20a59def-ffe2-4c70-908f-e6f11e429497",
-      "__expectedType__": "cc.AudioClip"
-    },
     "clipLevelStart": {
       "__uuid__": "74cf73ad-b64a-49a8-877c-f1b3a5bbfb69",
       "__expectedType__": "cc.AudioClip"

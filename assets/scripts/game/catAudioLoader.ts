@@ -16,7 +16,10 @@ import { AudioClip, resources } from 'cc';
  * - 某 category 缺文件时自动 fallback 到 `cat/` 同名音；都缺则返回 null，
  *   `CocosGameAudio` 再 fallback 到 Inspector 配置的通用 clip。
  *
- * 不在此处管理的音（与皮肤无关）：`sfxCatch / sfxWin / sfxLose / sfxUi / bgmMain`。
+ * 不在此处管理的音：
+ * - 与皮肤无关的反馈音：`sfxCatch / sfxWin / sfxLose / sfxUi` 仍走 Inspector 通用 clip；
+ * - 主循环 BGM：由 `audio-stream` 分包异步加载，见 `GameController.applyStreamingBgm`，
+ *   `CocosGameAudio.setBgmClip` 注入，与皮肤无关。
  */
 export const CAT_AUDIO_ACTIONS = [
   'start',

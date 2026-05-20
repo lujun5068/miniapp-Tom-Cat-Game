@@ -51,7 +51,7 @@ tsconfig.json                  TypeScript 配置
    - 猫资源：`sfCat`、`catAnimFramesStart`、`catAnimFramesWalkHorizontal`、`catAnimFramesWalkVertical`、`catAnimFramesStun`
    - 老鼠资源：`sfMouse`、`sfMouseVertical`
    - UI 背景：`sfUiBg`
-   - 音频：`clipBgmMain`、`clipLevelStart`、`clipSfxJump`、`clipSfxAttack`、`clipSfxCatch` 等
+   - 音频：`clipLevelStart`、`clipSfxJump`、`clipSfxAttack`、`clipSfxCatch` 等（主循环 BGM 不再在 Inspector，按 `audio-stream` 分包异步加载）
 4. 点击 Creator 顶部的预览按钮运行游戏。
 
 ### 构建发布

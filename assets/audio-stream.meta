@@ -2,12 +2,12 @@
   "ver": "1.2.0",
   "importer": "directory",
   "imported": true,
-  "uuid": "7b3e1d2c-8f4a-4b9d-a5c6-3e2f1a8b9c0d",
+  "uuid": "a5f6e7d8-1c2b-43a9-bf0e-7d8c9b1a2e3f",
   "files": [],
   "subMetas": {},
   "userData": {
     "isBundle": true,
-    "bundleName": "personal-center",
+    "bundleName": "audio-stream",
     "priority": 1,
     "compressionType": {
       "wechatgame": "subpackage",

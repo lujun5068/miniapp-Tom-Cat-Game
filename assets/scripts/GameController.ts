@@ -1,11 +1,12 @@
 /**
  * 使用方式：在 Creator 中打开/新建场景 → 选中 Canvas 节点 → 添加组件「GameController」→ 保存场景 → 运行预览。
- * 音频：在 Inspector 中为 `clipBgmMain` / `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。顶栏音乐/音效开关与关卡存档经 `storage/platformKv` 写入：微信小游戏构建下走 **`wx.setStorageSync`**，其余平台走 **`sys.localStorage`**（键名与网页版一致）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用 **mp3** 等再绑定。
+ * 音频：在 Inspector 中为 `clipLevelStart` / `clipSfx*` 指定 **AudioClip**（可由 **`.m4a`**、`.mp3` 等导入；与网页版 `gameAudio.ts` 语义一一对应即可）。**BGM 已迁出 Inspector**：`assets/audio-stream/bgm_main_loop.m4a` 通过 `audio-stream` Bundle（微信小游戏 subpackage）在 `onLoad` 异步加载并 `setBgmClip` 注入，目的是把首包瘦身约 490KB。顶栏音乐/音效开关与关卡存档经 `storage/platformKv` 写入：微信小游戏构建下走 **`wx.setStorageSync`**，其余平台走 **`sys.localStorage`**（键名与网页版一致）。上微信真机前请确认目标机型对 `.m4a` 的解码支持，必要时改用 **mp3** 等再绑定。
  * 贴图（可选）：`sfMapFloor` 有值即可用精灵铺地板；`sfMapEdge` / `sfMapStone1` / `sfMapStone2` 可逐项补全，未绑定的障碍格仍用 `BoardView` 色块叠在地板上。四张齐全时与网页 `mapTileTextures` 一致为纯精灵。`mapTileScaleFloor` / `Edge` / `Stone` 控制各层贴图相对单格缩放（默认 1 与格等大）。`sfCat` 为猫单帧回退（动画加载失败时使用）；猫四态序列帧改为按当前皮肤从 `assets/resources/cat-skins/<skinId>/{start,walk1,walk2,xuanyun}` 运行时加载（由 `ScoreManager.getCurrentSkin()` 决定，PersonalCenterPage 切换皮肤后下次进入主场景生效）；`catAnimFrameSec` 控制帧间隔。`sfMouse` 为老鼠单帧；`sfMouseVertical` 为纵向移动时老鼠贴图（可空则与横向共用并沿用翻转）；`mouseSpriteScale` 控制老鼠精灵相对默认显示尺寸（如 1.5）。`sfUiBg` 为全屏底图，缺省用 `UiTheme.bgFallback` 色块。
  */
 import {
   _decorator,
   AudioClip,
+  assetManager,
   BlockInputEvents,
   Button,
   Color,
@@ -138,8 +139,7 @@ function resolveMoveIntent(
 
 @ccclass('GameController')
 export class GameController extends Component {
-  @property({ type: AudioClip, tooltip: '主循环 BGM' })
-  clipBgmMain: AudioClip | null = null;
+  // 主循环 BGM 不再走 Inspector：见 onLoad → applyStreamingBgm。资源位于 assets/audio-stream/ 分包。
 
   @property({ type: AudioClip, tooltip: '关卡开始' })
   clipLevelStart: AudioClip | null = null;
@@ -331,7 +331,6 @@ export class GameController extends Component {
     const audioHost = new Node('AudioHost');
     this.node.addChild(audioHost);
     this.gameAudio = new CocosGameAudio(audioHost, {
-      bgmMain: this.clipBgmMain,
       levelStart: this.clipLevelStart,
       sfxJump: this.clipSfxJump,
       sfxAttack: this.clipSfxAttack,
@@ -341,6 +340,8 @@ export class GameController extends Component {
       sfxLose: this.clipSfxLose,
       sfxUi: this.clipSfxUi,
     });
+    // BGM 不在 Inspector，改从 audio-stream 分包异步加载；首次用户手势后会自动开始播放。
+    void this.applyStreamingBgm();
     this.sim.setSoundHooks({
       onLevelStart: () => this.gameAudio.playLevelStart(),
       onStun: () => {
@@ -1828,6 +1829,43 @@ export class GameController extends Component {
       framesWalkVertical: frames.walkV,
       framesStun: frames.stun,
       frameDurationSec: this.catAnimFrameSec,
+    });
+  }
+
+  /**
+   * 异步加载 `audio-stream` 分包里的 `bgm_main_loop.m4a` 并注入 CocosGameAudio。
+   *
+   * 分包目的是把 ~490KB 的主循环 BGM 从首包剥离（详见 docs/SCORE_AND_SKIN.md §4.4
+   * 与 docs/CHANGELOG.md 2026-05-20）。微信小游戏构建里 `audio-stream` 配置为
+   * subpackage；其他平台为 merge_dep 退化为普通 Bundle，行为一致。
+   *
+   * - 加载失败仅打 console.warn，不抛错也不弹 UI；游戏其余流程不依赖 BGM。
+   * - 加载完成时组件可能已被销毁（用户已切场景），所以注入前再 `isValid` 防御。
+   * - `setBgmClip` 内部会在 `bgmEnabled && unlocked` 时自动 `play`，所以这里不需要
+   *   显式触发，跟首次用户手势谁先谁后都能 work。
+   */
+  private async applyStreamingBgm(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      assetManager.loadBundle('audio-stream', (bundleErr, bundle) => {
+        if (bundleErr || !bundle) {
+          console.warn('[GameController] load audio-stream bundle failed', bundleErr);
+          resolve();
+          return;
+        }
+        bundle.load('bgm_main_loop', AudioClip, (clipErr, clip) => {
+          if (clipErr || !clip) {
+            console.warn('[GameController] load bgm_main_loop failed', clipErr);
+            resolve();
+            return;
+          }
+          if (!this.node || !this.node.isValid || !this.gameAudio) {
+            resolve();
+            return;
+          }
+          this.gameAudio.setBgmClip(clip);
+          resolve();
+        });
+      });
     });
   }
 

@@ -145,7 +145,9 @@ assets/resources/cat-audios/
 - 加载：`game/catAudioLoader.ts` 的 `loadCatSkinAudio(category, fallback='cat')` 异步加载 4 个 `AudioClip`，缺失自动回退到 `cat/` 同名音；都缺则返回 null。
 - 注入：`GameController.applyCatSkinAudio(category)` → `CocosGameAudio.setSkinAudio(pack)` 写入 `skinClips` 覆盖层。
 - 播放：`CocosGameAudio.playLevelStart / playJump / playAttack / playStun` 通过 `resolveSkinClip(action, fallback)` 取音，**优先用 skinClips、再回退到 Inspector 通用 clip**。
-- 不受皮肤影响：`sfxCatch / sfxWin / sfxLose / sfxUi / bgmMain` 这 5 个仍走 Inspector 配置，作为通用游戏反馈音 / 背景乐。
+- 不受皮肤影响：
+  - `sfxCatch / sfxWin / sfxLose / sfxUi` 4 个仍走 Inspector 通用 clip。
+  - **主循环 BGM 已不在 Inspector**：移出到 `assets/audio-stream/bgm_main_loop.m4a` + 配套 `audio-stream.meta`（`isBundle: true`，`compressionType.wechatgame: 'subpackage'`）。`GameController.applyStreamingBgm()` 在 `onLoad` 异步 `assetManager.loadBundle('audio-stream')` → `bundle.load('bgm_main_loop', AudioClip)` → `CocosGameAudio.setBgmClip(clip)`。`setBgmClip` 内部已处理"clip 注入时 BGM 已被用户开启 + 已 unlock 则立即播放"的时序。目的是把 ~490KB 的 BGM 从首包剥离到微信小游戏分包，详见 §6。
 - 增加新 category：在 `assets/resources/cat-audios/` 下新建同名目录放 4 个 m4a 即可，无需改任何代码；`skinConfig` 中皮肤标记上该 category 后下次进入主场景即生效。
 - 平台注意：微信小游戏部分机型对 m4a 解码兼容性差异较大，必要时把全部 m4a 转 mp3 重新导入（同名 + 同 meta uuid 即可，`resources.load('cat-audios/cat/start', AudioClip)` 路径不含后缀）。
 
@@ -262,3 +264,62 @@ assets/resources/rat_skins/
 | 写入存档 | 是（`unlockedSkins` / `currentSkin`） | 否 |
 | 帧方向处理 | 资源默认朝右 / 朝上，渲染层翻转 + 旋转 | 资源自带 4 方向，渲染层不翻转 |
 | 配置入口 | `skinConfig.ts` + 个人中心 | `ratSkinLoader.RAT_SKIN_IDS` |
+
+---
+
+## 10. 首包瘦身与分包策略
+
+### 10.1 当前已分包 Bundle
+
+| Bundle 名 | 目录 | 主要内容 | wechatgame compressionType | 加载入口 |
+| --- | --- | --- | --- | --- |
+| `personal-center` | `assets/personal-center/` | `PersonalCenterPage.scene` | `subpackage` | `sceneRoutes.loadPersonalCenterScene()` |
+| `audio-stream` | `assets/audio-stream/` | `bgm_main_loop.m4a` (~490KB) | `subpackage` | `GameController.applyStreamingBgm()` |
+| `resources`（默认 Resources Bundle） | `assets/resources/` | `cat-skins/`、`cat-audios/`、`rat_skins/` | （默认随首包） | `resources.load*` |
+| `internal` / `start-scene` / `main` | Cocos 自动生成 | 引擎依赖 + 主场景 + 公共脚本 | （首包） | — |
+
+> Bundle 内只包含**该目录树内**的资源；外部资源（脚本、被场景引用的图 / 音）默认仍在主包。仅把场景丢进 bundle 目录而引用的脚本 / 资源散在外面，则分包目录会非常小、首包不会瘦身。
+
+### 10.2 BGM 分包工作流程（`audio-stream`）
+
+1. 资源位于 `assets/audio-stream/bgm_main_loop.m4a`（uuid 保留 `20a59def-...`，不改避免历史引用断链）。
+2. `assets/audio-stream.meta` 配 `userData.isBundle: true`、`bundleName: 'audio-stream'`、`compressionType.wechatgame: 'subpackage'`、其他平台 `merge_dep`。
+3. `scene-001.scene` 不再 reference 该 uuid（已删除 `clipBgmMain` 字段），构建依赖图不会把 bgm 拖回主场景 bundle。
+4. `GameController.applyStreamingBgm()` 在 `onLoad` 中异步：`assetManager.loadBundle('audio-stream')` → `bundle.load('bgm_main_loop', AudioClip)` → `gameAudio.setBgmClip(clip)`；失败仅 `console.warn`，BGM 静默不影响游戏。
+5. `CocosGameAudio.setBgmClip` 写入 `bgm.clip` 并视 `bgmEnabled && unlocked` 决定是否立即播放，所以"分包加载完成"与"首次用户手势"先后顺序都能 work。
+
+### 10.3 待施行优化（按性价比排序）
+
+按 `build/wechatgame/` 实测数据，主包 ~3.7MB 的剩余大头是：
+
+| 候选项 | 预计减小 | 落地位置 |
+| --- | --- | --- |
+| 非默认猫皮肤拆 `skin-pack` 分包 | ~700KB | `assets/resources/cat-skins/{golden,ninja,pirate,fox,boar}` → `assets/skin-pack/cat-skins/`，新 bundle + subpackage，改 `catSkinLoader` 走 `loadBundle` |
+| 非 `cat` 类皮肤音拆同上 | ~50KB | `cat-audios/{fox,boar}` → 同上，改 `catAudioLoader` |
+| Cocos 引擎模块裁剪 | 100–300KB | 项目设置 → 模块设置（见 §10.4） |
+| 按 bundle 拆分脚本 | 50–100KB | Creator 构建面板高级选项（开启后只被分包用到的脚本跟分包走） |
+
+### 10.4 Cocos 引擎模块裁剪指引（必须在 Creator UI 里操作）
+
+| 步骤 | 操作 |
+| --- | --- |
+| 1 | Creator 顶部菜单 → 「项目」→「项目设置」 |
+| 2 | 左侧选「功能裁剪」（旧版叫"模块设置 / Engine Modules"） |
+| 3 | 关闭项目用不到的模块：3D（`primitive` / `terrain` / `light`）、`physics-2d/3d`（项目无物理）、`particle-2d/3d`、`spine`、`dragon-bones`、`tiled-map`、`video / webview`、`profiler`（生产环境）、`marionetter` 等。**保留**：`ui / ui-base / sprite / audio / animation / tween` |
+| 4 | 「保存」→ Creator 会重新生成 `cocos-js` 编译产物 |
+| 5 | 重新「构建发布 → wechatgame」**Build**（不是 Make），观察 `build/wechatgame/cocos-js/` 体积变化 |
+
+> 保守做法：先一次只关 2-3 个明显无关的模块，预览跑一遍主场景 + 个人中心，确认没报"未定义符号"再继续关下一批。
+
+### 10.5 构建发布面板分包配置自检
+
+每次构建前在 Creator 构建发布面板里确认：
+
+- 平台选 `wechatgame`。
+- 找到「分包配置 / SubPackages」（位置随版本不同，可能在「高级」折叠区）。
+- 列表里应出现：
+  - `personal-center`（路径 `personal-center`，✅ 勾选 subpackage）
+  - `audio-stream`（路径 `audio-stream`，✅ 勾选 subpackage）
+  - **不应**出现 `main` 被勾成 subpackage（之前构建出现的 `subpackages/main/` 0.6KB 即此误标记）；若有，取消勾选。
+- 改完点「Build」（不是「Make」），让 manifest 重新生成。
+- 构建成功后用 PowerShell 计算 `build/wechatgame/subpackages/*` 目录大小核对。

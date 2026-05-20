@@ -9,9 +9,13 @@ import type {
   CatSkinAudioPack,
 } from '../game/catAudioLoader';
 
-/** 与网页版 `gameAudio.ts` 资源一一对应；在 Inspector 中拖入 AudioClip（支持 ogg/mp3 等导入后生成的 Clip） */
+/**
+ * 与网页版 `gameAudio.ts` 资源一一对应。`bgmMain` 不在此处提供：
+ * BGM (490KB) 已迁出主场景依赖图、改为通过 `assetManager.loadBundle('audio-stream')`
+ * 异步加载，加载完再调用 `setBgmClip` 注入；首屏包体可省去这部分大小。
+ * 其余 sfx/start 体积小（<30KB），仍保留 Inspector 拖入。
+ */
 export type GameAudioClipBundle = {
-  bgmMain: AudioClip | null;
   levelStart: AudioClip | null;
   sfxJump: AudioClip | null;
   sfxAttack: AudioClip | null;
@@ -28,6 +32,8 @@ export class CocosGameAudio {
   private readonly bgm: AudioSource;
   private readonly sfx: AudioSource;
   private readonly clips: GameAudioClipBundle;
+  // BGM 通过 setBgmClip 运行时注入（来自 audio-stream 分包），未注入前为 null。
+  private bgmClip: AudioClip | null = null;
   /**
    * 当前皮肤特化音覆盖层：`start / jump / attack / stun` 优先于 `clips.levelStart / sfxJump / sfxAttack / sfxStun`。
    * 由 `GameController.applyCurrentCatSkin → catAudioLoader.loadCatSkinAudio` 异步注入；
@@ -42,9 +48,7 @@ export class CocosGameAudio {
     const bgmNode = new Node('BgmAudio');
     host.addChild(bgmNode);
     this.bgm = bgmNode.addComponent(AudioSource);
-    if (clips.bgmMain) {
-      this.bgm.clip = clips.bgmMain;
-    }
+    // bgm clip 由 setBgmClip 后续注入。
     this.bgm.loop = true;
     this.bgm.playOnAwake = false;
     this.bgm.volume = 0.35;
@@ -54,6 +58,17 @@ export class CocosGameAudio {
     this.sfx = sfxNode.addComponent(AudioSource);
     this.sfx.playOnAwake = false;
     this.sfx.volume = 1;
+  }
+
+  /**
+   * 注入主循环 BGM clip（通常由 `audio-stream` 分包异步加载完成后调用）。
+   * 传 null 可清空。注入后若 `settings.bgmEnabled && unlocked` 自动尝试播放，
+   * 兼容"clip 加载比首次用户手势更晚"的场景。
+   */
+  setBgmClip(clip: AudioClip | null): void {
+    this.bgmClip = clip;
+    this.bgm.clip = clip;
+    if (clip) this.tryPlayBgm();
   }
 
   unlockFromUserGesture(): void {
@@ -89,14 +104,14 @@ export class CocosGameAudio {
       this.bgm.pause();
       return;
     }
-    if (!this.clips.bgmMain) return;
+    if (!this.bgmClip) return;
     if (this.unlocked) {
       void Promise.resolve(this.bgm.play()).catch(() => {});
     }
   }
 
   private tryPlayBgm(): void {
-    if (!this.settings.bgmEnabled || !this.clips.bgmMain) return;
+    if (!this.settings.bgmEnabled || !this.bgmClip) return;
     if (this.unlocked) {
       void Promise.resolve(this.bgm.play()).catch(() => {});
     }
