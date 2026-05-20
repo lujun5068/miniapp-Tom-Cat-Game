@@ -6,6 +6,24 @@
 
 ---
 
+## 2026-05-20
+
+### 业务规则
+- 猫跳跃 / 攻击 / 眩晕规则调整（[`assets/scripts/game/rules.ts`](../assets/scripts/game/rules.ts)）：
+  - 新增 `isWallCell(grid, x, y)`：越界或位于地图外圈的障碍格视为"墙"（与 `BoardView.isMapOuterRing` 同一几何判据，对应视觉上的 `edge` 贴图）；内圈障碍是石头，可跳越。
+  - `evalJump`：
+    1. 前方下一格是墙（含越界）→ 眩晕（行为不变）；
+    2. **新行为**：前方下一格是空地 → 前进 1 格落点（原本要求必须有石头，否则眩晕）；
+    3. 前方下一格是石头（内圈障碍）→ 仍然检查 `+2dx,+2dy` 是否可走，可走则跳到 2 格落点，否则眩晕（保留越过逻辑）。
+  - `evalAttack`：**改为前进 2 格冲撞**，三种结果：
+    1. p1 不可走 → 原地眩晕、不移动（`ok:false, stun:true`）；
+    2. **p1 可走、p2 不可走 → 前进 1 格后眩晕**（`ok:true, x:p1x, y:p1y, path:[p1], stun:true`，撞墙 / 撞障碍效果）；
+    3. p1 / p2 都可走 → 冲到 p2（`ok:true, x:p2x, y:p2y, path:[p1,p2]`，不眩晕）。
+  - `simulation.tryPounce`：按 `r.path` 逐格 `catchMice`（避免 p1 上的老鼠"被跳过却没被吃"）；若返回 `stun:true` 则在播完 `onAttackSuccess` 之后再触发 `STUN_DURATION_SEC + onStun`。`MotionEvent.kind='attack'` 的 from→to 由动画系统线性插值，1 格 / 2 格距离都不影响 `CatMotionAnimator` 既有 attack 段动画播放。
+  - 副作用：旧 `AttackResult` 没有 `path` 字段、`r.x/r.y` 仍是终点；新类型加了 `path: {x,y}[]` 与可选 `stun?: boolean`（仅 `ok:true` 分支）。当前仅 `simulation.tryPounce` 一处消费，无外部 API 影响。
+
+---
+
 ## 2026-05-19
 
 ### 美术 / 资源

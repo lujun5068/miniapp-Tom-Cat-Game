@@ -227,10 +227,18 @@ export class GameSimulation {
         to: { x: this.catX, y: this.catY },
       });
       this.soundHooks.onAttackSuccess?.();
+      // 攻击为前进两格的冲撞，路径上的老鼠都应被吃掉（不只是终点）。
       const beforeMice = this.mice.length;
-      this.mice = catchMice(this.catX, this.catY, this.mice);
+      for (const p of r.path) {
+        this.mice = catchMice(p.x, p.y, this.mice);
+      }
       if (this.mice.length < beforeMice) {
         this.soundHooks.onCatch?.();
+      }
+      // p1 可走但 p2 被挡：冲到第 1 格后撞晕，仍触发 stun 音效与持续时间。
+      if (r.stun) {
+        this.stunnedRemaining = STUN_DURATION_SEC;
+        this.soundHooks.onStun?.();
       }
     }
     this.actionCooldown = 0.062;
