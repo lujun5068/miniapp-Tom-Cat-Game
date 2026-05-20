@@ -33,7 +33,7 @@ import {
 
 const { ccclass } = _decorator;
 
-type CatAnimKey = 'start' | 'walkH' | 'walkV' | 'stun';
+type CatAnimKey = 'start' | 'walkH' | 'walkV' | 'stun' | 'attack';
 
 type CatAnimPack = {
   secPerFrame: number;
@@ -41,6 +41,11 @@ type CatAnimPack = {
   walkH: SpriteFrame[];
   walkV: SpriteFrame[];
   stun: SpriteFrame[];
+  /**
+   * 攻击帧组。catSkinLoader 在该皮肤没有 attack/ 资源时已自动用本皮肤 walkH 填充
+   * （见 catSkinLoader.ts 文件头注释），所以这里读到空数组的概率很低；空时会按 'start' 兜底。
+   */
+  attack: SpriteFrame[];
 };
 
 type RatRuntimeState = {
@@ -250,13 +255,24 @@ export class BoardView extends Component {
     framesWalkHorizontal?: SpriteFrame[] | null;
     framesWalkVertical?: SpriteFrame[] | null;
     framesStun?: SpriteFrame[] | null;
+    framesAttack?: SpriteFrame[] | null;
     frameDurationSec?: number;
   }): void {
     const start = sortCatSpriteFrames([...(opts.framesStart ?? [])]);
     const walkH = sortCatSpriteFrames([...(opts.framesWalkHorizontal ?? [])]);
     const walkV = sortCatSpriteFrames([...(opts.framesWalkVertical ?? [])]);
     const stun = sortCatSpriteFrames([...(opts.framesStun ?? [])]);
-    if (!start.length && !walkH.length && !walkV.length && !stun.length) {
+    // attack 缺省时由 catSkinLoader 已经 fallback 到 walkH；这里再做一次空兜底确保类型安全。
+    const attack = sortCatSpriteFrames([
+      ...(opts.framesAttack ?? opts.framesWalkHorizontal ?? []),
+    ]);
+    if (
+      !start.length &&
+      !walkH.length &&
+      !walkV.length &&
+      !stun.length &&
+      !attack.length
+    ) {
       this.catAnim = null;
       this.catAnimStateKey = '';
       this.catAnimTime = 0;
@@ -268,6 +284,7 @@ export class BoardView extends Component {
       walkH,
       walkV,
       stun,
+      attack,
     };
     this.catAnimStateKey = '';
     this.catAnimTime = 0;
@@ -770,7 +787,11 @@ export class BoardView extends Component {
       key = 'stun';
     } else {
       const mk = anim.getActiveMotionKind();
-      if (mk === 'walk') {
+      if (mk === 'attack') {
+        // attack 帧 catSkinLoader 已保证非空（缺则 fallback 到本皮肤 walkH），
+        // 直接切 'attack' key；stripOf 内部还有空数组兜底（fallback 到 start）。
+        key = 'attack';
+      } else if (mk === 'walk') {
         const h = anim.getWalkIsHorizontal();
         if (h === true) key = 'walkH';
         else if (h === false) key = 'walkV';
@@ -786,6 +807,7 @@ export class BoardView extends Component {
       if (k === 'stun') return pack.stun;
       if (k === 'walkH') return pack.walkH;
       if (k === 'walkV') return pack.walkV;
+      if (k === 'attack') return pack.attack;
       return pack.start;
     };
 

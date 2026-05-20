@@ -8,6 +8,14 @@
 
 ## 2026-05-20
 
+### 皮肤 attack 帧组
+
+- 猫皮肤资源新增 `attack/` 子目录（`default / ninja / pirate / golden / boar` 各 5 帧；`fox` 暂未提供）。
+- [`catSkinLoader.ts`](../assets/scripts/game/catSkinLoader.ts) `CatSkinFrames` 增加 `attack: SpriteFrame[]` 字段。fallback 策略**特殊**：当前皮肤缺 `attack/` 时**直接复用本皮肤 `walkH`**（而不是 default 皮肤的 attack），避免跨皮肤借用造成"攻击瞬间换猫"的违和感；本皮肤连 walkH 都没有时才走通用 fallback 拉 default。
+- [`BoardView.ts`](../assets/scripts/BoardView.ts) `CatAnimKey` 增加 `'attack'`；`configureCatFrameAnimations` 新参数 `framesAttack`；`resolveCatDisplay` 检测到 `anim.getActiveMotionKind() === 'attack'` 时切到 attack 帧组（stripOf 也兜底空数组 → start）。
+- [`GameController.ts`](../assets/scripts/GameController.ts) `applyCatSkinFrames` 把 `frames.attack` 透传给 BoardView；onLoad 阶段的占位 configure 也补 `framesAttack: []` 保持类型一致。
+- 验证矩阵：`default/ninja/pirate/golden/boar` 攻击播 attack 帧；`fox` 攻击复用 walkH，仍能正常播帧动画无空状态。
+
 ### 存档系统硬化（皮肤丢失 bug 排查 & 修复）
 
 **问题症状**：玩家兑换并使用非默认皮肤后，重新进入小程序皮肤被重置 + 已兑换记录丢失，但积分和关卡进度都正常。

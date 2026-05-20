@@ -586,6 +586,7 @@ export class GameController extends Component {
       framesWalkHorizontal: [],
       framesWalkVertical: [],
       framesStun: [],
+      framesAttack: [],
       frameDurationSec: this.catAnimFrameSec,
     });
     this.applyCurrentCatSkin();
@@ -1828,6 +1829,7 @@ export class GameController extends Component {
       framesWalkHorizontal: frames.walkH,
       framesWalkVertical: frames.walkV,
       framesStun: frames.stun,
+      framesAttack: frames.attack,
       frameDurationSec: this.catAnimFrameSec,
     });
   }
