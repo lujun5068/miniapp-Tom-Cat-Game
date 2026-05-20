@@ -55,7 +55,7 @@ type RatRuntimeState = {
   frameIndex: number;
 };
 
-const CAT_VERTICAL_ANIM_SCALE = 0.75;
+const CAT_VERTICAL_ANIM_SCALE = 0.9;
 /** 棋盘上猫节点相对默认半径的额外放大系数；调大会让猫整体看起来更显眼 */
 const CAT_DISPLAY_SCALE = 1.75;
 
