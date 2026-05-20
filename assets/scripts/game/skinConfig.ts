@@ -64,7 +64,7 @@ export const catSkins: CatSkin[] = [
     price: 0,
     description: '凶残的金刚狼',
     isDefault: false,
-    category: 'cat',
+    category: 'wolf',
     visualTint: { r: 110, g: 120, b: 155 },
   },
   {
