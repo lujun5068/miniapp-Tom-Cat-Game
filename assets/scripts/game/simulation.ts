@@ -91,7 +91,18 @@ export class GameSimulation {
   mice: Mouse[] = [];
   timeLeft = DEFAULT_LEVEL_TIME_SEC;
   stunnedRemaining = 0;
+  /**
+   * 攻击 / 跳跃动作的冷却（秒），由 `tryJump` / `tryPounce` 写入。
+   * 期间会**同时阻挡走路、跳跃、攻击**——因为攻击/跳跃带逻辑位移（catX/catY 已更新），
+   * 视觉位移还在播放时若让走路插进来，会造成"逻辑跑在视觉前面"的瞬移感。
+   */
   actionCooldown = 0;
+  /**
+   * 走路（`tryMove`）专用的最小间隔冷却（秒），由 `tryMove` 写入，
+   * 长度 = `walkRepeatIntervalSec`。**仅阻挡 `tryMove`**，
+   * 攻击 / 跳跃会无视它直接打断连走 → 解决"连走时按攻击/跳跃丢输入"的问题。
+   */
+  walkCooldown = 0;
   /**
    * 连走时每格之间的逻辑最小间隔。运行时可由 GameController 从 Inspector 注入覆盖，
    * 默认取 `WALK_REPEAT_INTERVAL_SEC`。
@@ -133,6 +144,7 @@ export class GameSimulation {
     this.timeLeft = DEFAULT_LEVEL_TIME_SEC;
     this.stunnedRemaining = 0;
     this.actionCooldown = 0;
+    this.walkCooldown = 0;
     this.miceMoveAcc = 0;
     if (opts?.playLevelStartSfx !== false) {
       this.soundHooks.onLevelStart?.();
@@ -157,6 +169,9 @@ export class GameSimulation {
     if (this.actionCooldown > 0) {
       this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     }
+    if (this.walkCooldown > 0) {
+      this.walkCooldown = Math.max(0, this.walkCooldown - dt);
+    }
 
     const stepSec = miceStepIntervalForLevel(this.level);
     this.miceMoveAcc += dt;
@@ -178,6 +193,11 @@ export class GameSimulation {
     }
   }
 
+  /**
+   * 攻击 / 跳跃可执行条件：游戏运行中 + 未眩晕 + 未处于上一个动作冷却。
+   * **故意不再检查 `walkCooldown`**，这样玩家在连走过程中按攻击/跳跃可立即生效
+   * （走路冷却只是为了节制连走节奏，不应阻塞完全不同的动作）。
+   */
   private canAct(): boolean {
     return (
       this.gameEnd === 'none' &&
@@ -186,8 +206,16 @@ export class GameSimulation {
     );
   }
 
+  /**
+   * 走路可执行条件：在 `canAct` 基础上再叠加 `walkCooldown` 检查。
+   * 攻击 / 跳跃期间也禁止走路，避免逻辑位移跑在视觉位移前面造成瞬移感。
+   */
+  private canWalk(): boolean {
+    return this.canAct() && this.walkCooldown <= 0;
+  }
+
   tryMove(dx: number, dy: number): void {
-    if (!this.canAct()) return;
+    if (!this.canWalk()) return;
     const face = normalizeMove(dx, dy);
     if (!face) return;
     this.facing = face;
@@ -208,7 +236,7 @@ export class GameSimulation {
     if (this.mice.length < beforeMice) {
       this.soundHooks.onCatch?.();
     }
-    this.actionCooldown = this.walkRepeatIntervalSec;
+    this.walkCooldown = this.walkRepeatIntervalSec;
     this.resolveEnd();
   }
 
