@@ -1,0 +1,54 @@
+{
+	"desc": "关于本文件的更多信息，请参考文档 代码加固开发者文档: https://developers.weixin.qq.com/miniprogram/dev/devtools/code_obfuscation.html",
+	"switch": true,
+	"configs": [
+		{
+			"path": "web-adapter.js",
+			"sub_switch": true
+		},
+		{
+			"path": "game.js",
+			"sub_switch": true
+		},
+		{
+			"path": "first-screen.js",
+			"sub_switch": true
+		},
+		{
+			"path": "application.js",
+			"sub_switch": true
+		},
+		{
+			"path": "src/import-map.js",
+			"sub_switch": true
+		},
+		{
+			"path": "src/system.bundle.js",
+			"sub_switch": true
+		},
+		{
+			"path": "src/chunks/bundle.js",
+			"sub_switch": true
+		},
+		{
+			"path": "subpackages/skin-pack/game.js",
+			"sub_switch": true
+		},
+		{
+			"path": "subpackages/audio-stream/game.js",
+			"sub_switch": true
+		},
+		{
+			"path": "assets/main/index.js",
+			"sub_switch": true
+		},
+		{
+			"path": "assets/resources/index.js",
+			"sub_switch": true
+		},
+		{
+			"path": "assets/internal/index.js",
+			"sub_switch": true
+		}
+	]
+}
