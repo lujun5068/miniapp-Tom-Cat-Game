@@ -70,7 +70,13 @@ const SKIN_CARD_HEIGHT =
   SKIN_CARD_BTN_H +
   SKIN_CARD_SECTION_GAP * 5;
 const SKIN_CARD_GAP = 16;
-const SKIN_PANEL_HEADER_HEIGHT = 86;
+/**
+ * 皮肤商店面板顶部标题区高度。
+ * 当前仅放主标题（"皮肤商店"，字号 22，自顶 17px），无副标题；
+ * 标题底部 ~51px，到 header 底部留 ~9px 过渡，再衔接卡片自身的 V_PAD。
+ * 若将来再加回副标题需把此值放大约 26px（原历史值 86）。
+ */
+const SKIN_PANEL_HEADER_HEIGHT = 60;
 const SKIN_PANEL_BOTTOM_PAD = 24;
 /**
  * 皮肤商店"内容区"高度上限（相对屏幕可视高度的比例）。
@@ -523,7 +529,7 @@ export class PersonalCenterPage extends Component {
     viewportBodyH: number,
     desiredBodyH: number,
   ): void {
-    this.addSectionTitle(panel, '皮肤商店', '兑换后可在游戏内立即生效');
+    this.addSectionTitle(panel, '皮肤商店');
 
     const viewportW = panelW - 40;
     const panelH = panel.getComponent(UITransform)!.height;
@@ -1154,10 +1160,15 @@ export class PersonalCenterPage extends Component {
     return panel;
   }
 
+  /**
+   * 通用 section 标题：主标题必填、副标题可选。
+   * 不传 `subText` 时不创建副标题 label，调用方应同步收紧 header 高度
+   * （皮肤商店当前就是这种用法，见 `SKIN_PANEL_HEADER_HEIGHT` 注释）。
+   */
   private addSectionTitle(
     panel: Node,
     titleText: string,
-    subText: string,
+    subText?: string,
   ): void {
     const title = addLabel(
       panel,
@@ -1174,6 +1185,8 @@ export class PersonalCenterPage extends Component {
       panel.getComponent(UITransform)!.height * 0.5 - 34,
       0,
     );
+
+    if (!subText) return;
 
     const sub = addLabel(
       panel,
