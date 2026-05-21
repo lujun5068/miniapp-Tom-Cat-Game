@@ -16,6 +16,21 @@ import type { MotionEvent } from './motionTypes';
 
 export const DEFAULT_LEVEL_TIME_SEC = 30;
 
+/**
+ * 持续按住方向键 / 摇杆时，"走一格"动作之间的最小间隔（秒）。
+ *
+ * - 数值越大，连走速度越慢，走路动画也越能看清；
+ * - 仅影响"连走"节奏，单次轻点不受此值限制；
+ * - 调试时可直接修改这里，或在 GameController Inspector 的
+ *   `Walk Repeat Interval Sec` 上微调（Inspector 优先级更高）；
+ * - 为避免出现"走一步停一停"的卡顿感，CatMotionAnimator 的 walk 段
+ *   视觉时长会被同步设为这个值（见 GameController 注入逻辑）。
+ *
+ * 旧版手感参考：0.045（约 22 格/秒，过快）。
+ * 当前默认：0.12（约 8 格/秒，可清晰看到走路动画）。
+ */
+export const WALK_REPEAT_INTERVAL_SEC = 0.12;
+
 export type GameSoundHooks = {
   onLevelStart?: () => void;
   onStun?: () => void;
@@ -64,6 +79,11 @@ export class GameSimulation {
   timeLeft = DEFAULT_LEVEL_TIME_SEC;
   stunnedRemaining = 0;
   actionCooldown = 0;
+  /**
+   * 连走时每格之间的最小间隔。运行时可由 GameController 从 Inspector 注入覆盖，
+   * 默认取 `WALK_REPEAT_INTERVAL_SEC`。
+   */
+  walkRepeatIntervalSec = WALK_REPEAT_INTERVAL_SEC;
   gameEnd: GameEnd = 'none';
   private pendingMotion: MotionEvent[] = [];
   private rnd: () => number;
@@ -175,7 +195,7 @@ export class GameSimulation {
     if (this.mice.length < beforeMice) {
       this.soundHooks.onCatch?.();
     }
-    this.actionCooldown = 0.045;
+    this.actionCooldown = this.walkRepeatIntervalSec;
     this.resolveEnd();
   }
 

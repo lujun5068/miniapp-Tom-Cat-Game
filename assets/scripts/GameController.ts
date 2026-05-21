@@ -35,7 +35,11 @@ import {
   getEffectiveMaxUnlockedLevel,
   saveProgressToDisk,
 } from './game/progress';
-import { GameSimulation, DEFAULT_LEVEL_TIME_SEC } from './game/simulation';
+import {
+  GameSimulation,
+  DEFAULT_LEVEL_TIME_SEC,
+  WALK_REPEAT_INTERVAL_SEC,
+} from './game/simulation';
 import { gameSession } from './game/sessionState';
 import { loadLevelSave } from './storage/levelSave';
 import type { MapTileSpriteFrames } from './render/MapTileSpriteFrames';
@@ -202,6 +206,16 @@ export class GameController extends Component {
   })
   catAttackFrameSec = 0.06;
 
+  @property({
+    tooltip:
+      '【调试用】持续按住方向键 / 摇杆时，连走 1 格之间的最小间隔（秒）。' +
+      '值越大走得越慢，便于看清走路动画。' +
+      '同时同步给走路视觉时长，避免出现"走一步顿一下"。' +
+      '0 或负值时退回 simulation.WALK_REPEAT_INTERVAL_SEC 默认值。' +
+      '参考：0.045 = 旧版手感（很快，约 22 格/秒）；0.12 = 当前默认（约 8 格/秒）；0.2 = 较慢（5 格/秒）。',
+  })
+  walkRepeatIntervalSec = 0.12;
+
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;
 
@@ -333,6 +347,7 @@ export class GameController extends Component {
       this.sim.grid.height,
       BASE_TILE_PX,
     );
+    this.applyWalkSpeedConfig();
 
     const audioHost = new Node('AudioHost');
     this.node.addChild(audioHost);
@@ -1821,6 +1836,19 @@ export class GameController extends Component {
     const pack = await loadCatSkinAudio(category);
     if (!this.gameAudio) return;
     this.gameAudio.setSkinAudio(pack);
+  }
+
+  /**
+   * 把 Inspector 调出来的 `walkRepeatIntervalSec` 同时下发给：
+   * - `GameSimulation.walkRepeatIntervalSec`：决定连走时每次 `tryMove` 之间的最小间隔；
+   * - `CatMotionAnimator.walkSecPerCell`：决定单格走路视觉时长，保持与上者一致避免顿挫。
+   * 设 ≤ 0 时退回 simulation 的默认常量（`WALK_REPEAT_INTERVAL_SEC`）。
+   */
+  private applyWalkSpeedConfig(): void {
+    const v = this.walkRepeatIntervalSec;
+    const sec = v > 0 ? v : WALK_REPEAT_INTERVAL_SEC;
+    this.sim.walkRepeatIntervalSec = sec;
+    this.anim.walkSecPerCell = sec;
   }
 
   /**

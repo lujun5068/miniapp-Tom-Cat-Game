@@ -57,6 +57,13 @@ function easeOutQuad(u: number): number {
 }
 
 export class CatMotionAnimator {
+  /**
+   * 单格行走的视觉时长（秒）。建议与 `simulation.WALK_REPEAT_INTERVAL_SEC` 保持一致，
+   * 避免连走时出现"位置瞬移完成 → 等待 cooldown → 下一格瞬移"的卡顿感。
+   * 由 GameController 在创建后从 Inspector 注入。
+   */
+  walkSecPerCell = 0.12;
+
   private active: Active | null = null;
   private readonly queue: MotionEvent[] = [];
   private px: number;
@@ -114,7 +121,9 @@ export class CatMotionAnimator {
     const to = gridCenterPx(ev.to.x, ev.to.y, this.gridW, this.gridH, this.tile);
     if (ev.kind === 'walk') {
       const cells = Math.min(6, Math.max(1, ev.mergedWalkCells ?? 1));
-      const dur = 0.028 * cells + 0.012;
+      // 与 simulation 的 walk cooldown 同步：每格视觉时长 ≈ 每格间隔，
+      // 这样连走时上一格视觉刚好结束、下一格立刻开始，无可见停顿。
+      const dur = this.walkSecPerCell * cells;
       this.active = {
         kind: 'walk',
         fromX,
