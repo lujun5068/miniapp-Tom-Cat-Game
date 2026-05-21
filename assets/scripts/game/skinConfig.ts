@@ -11,6 +11,13 @@ export interface CatSkin {
    * `MIN_WALK_REPEAT_INTERVAL_SEC` 兜底（再大也不会更快）。
    */
   speedBuff: number;
+  /**
+   * 皮肤主题色（0~255 RGB）。**仅在贴图加载失败、`BoardView` 回退到 entityGfx
+   * 色块圆点时生效**，作为"最低可见反馈"。贴图路径不再用这个值做乘法染色
+   * （Sprite.color 是 modulate，<255 会把贴图整体压暗），所以正常情况下玩家
+   * 看不到这个颜色——保留它只是为了帧组加载失败时圆点还能区分皮肤。
+   * 详见 `BoardView.CAT_SPRITE_NEUTRAL_TINT` 与 `setCatVisualTint` 的注释。
+   */
   visualTint: {
     r: number;
     g: number;

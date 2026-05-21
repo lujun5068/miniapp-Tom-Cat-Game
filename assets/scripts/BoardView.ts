@@ -65,6 +65,15 @@ type RatRuntimeState = {
 const CAT_VERTICAL_ANIM_SCALE = 0.9;
 /** 棋盘上猫节点相对默认半径的额外放大系数；调大会让猫整体看起来更显眼 */
 const CAT_DISPLAY_SCALE = 1.75;
+/**
+ * 猫精灵默认 tint：纯白即 modulate 1.0，等价于「不染色，按贴图原样显示」。
+ * 早期 `skinConfig.visualTint` 通过 `Sprite.color` 做乘法染色会把贴图整体压暗，
+ * 现在贴图路径强制走这个常量，皮肤主题色仅在「贴图加载失败回退色块」时生效。
+ * 复用同一个 Color 实例，避免 drawEntities 每帧 new Color() 的分配开销。
+ */
+const CAT_SPRITE_NEUTRAL_TINT = new Color(255, 255, 255, 255);
+/** 猫眩晕态的泛红 tint；同样复用实例避免每帧分配。 */
+const CAT_SPRITE_STUN_TINT = new Color(255, 200, 200, 255);
 
 /**
  * 按资源名中的帧序号排序，兼容下面几种命名：
@@ -211,6 +220,12 @@ export class BoardView extends Component {
     this.markMapDirty();
   }
 
+  /**
+   * 设置猫的皮肤主题色。**仅在贴图加载失败回退到 entityGfx 色块圆点时生效**；
+   * 贴图路径走 `CAT_SPRITE_NEUTRAL_TINT` 不再做乘法染色，避免把贴图整体压暗。
+   * 如果将来想让贴图也叠加皮肤色调，需要换成非 modulate 的混合方式（如自定义 shader），
+   * 不能直接复用 `Sprite.color`。
+   */
   setCatVisualTint(tint: { r: number; g: number; b: number }): void {
     this.catTint = new Color(tint.r, tint.g, tint.b, 255);
   }
@@ -607,9 +622,12 @@ export class BoardView extends Component {
         angle = 180;
       }
       this.catNode.angle = angle;
+      // 贴图路径强制走中性 tint：Sprite.color 是乘法 modulate，皮肤的 visualTint 若 < 255
+      // 会把贴图整体压暗（除 default 外几乎所有皮肤都会发生，详见 CAT_SPRITE_NEUTRAL_TINT 注释）；
+      // 因此皮肤色只保留在下面的色块 fallback 分支，作为「贴图加载失败时的可见反馈」。
       this.catSpr.color = softenStunTint
-        ? new Color(255, 200, 200, 255)
-        : this.catTint;
+        ? CAT_SPRITE_STUN_TINT
+        : CAT_SPRITE_NEUTRAL_TINT;
     } else {
       this.catSpr.enabled = false;
       this.entityGfx.fillColor = stunned
