@@ -57,13 +57,6 @@ function easeOutQuad(u: number): number {
 }
 
 export class CatMotionAnimator {
-  /**
-   * 单格行走的视觉时长（秒）。建议与 `simulation.WALK_REPEAT_INTERVAL_SEC` 保持一致，
-   * 避免连走时出现"位置瞬移完成 → 等待 cooldown → 下一格瞬移"的卡顿感。
-   * 由 GameController 在创建后从 Inspector 注入。
-   */
-  walkSecPerCell = 0.12;
-
   private active: Active | null = null;
   private readonly queue: MotionEvent[] = [];
   private px: number;
@@ -90,7 +83,13 @@ export class CatMotionAnimator {
   snapToGrid(catGridX: number, catGridY: number): void {
     this.active = null;
     this.queue.length = 0;
-    const c = gridCenterPx(catGridX, catGridY, this.gridW, this.gridH, this.tile);
+    const c = gridCenterPx(
+      catGridX,
+      catGridY,
+      this.gridW,
+      this.gridH,
+      this.tile,
+    );
     this.px = c.x;
     this.py = c.y;
   }
@@ -118,12 +117,20 @@ export class CatMotionAnimator {
   private begin(ev: MotionEvent): void {
     const fromX = this.px;
     const fromY = this.py;
-    const to = gridCenterPx(ev.to.x, ev.to.y, this.gridW, this.gridH, this.tile);
+    const to = gridCenterPx(
+      ev.to.x,
+      ev.to.y,
+      this.gridW,
+      this.gridH,
+      this.tile,
+    );
     if (ev.kind === 'walk') {
       const cells = Math.min(6, Math.max(1, ev.mergedWalkCells ?? 1));
-      // 与 simulation 的 walk cooldown 同步：每格视觉时长 ≈ 每格间隔，
-      // 这样连走时上一格视觉刚好结束、下一格立刻开始，无可见停顿。
-      const dur = this.walkSecPerCell * cells;
+      // 行走视觉时长公式（保持原版手感）：每格基线 ~28ms + 起步常量 12ms。
+      // 单格 = 40ms（在 60fps 下 ≈ 2.4 帧，配合 easeOutQuad 出现 3 帧平滑曲线，
+      // 避免和 walkRepeatIntervalSec 等长时出现"瞬移→静止→瞬移"的卡顿感）。
+      // 多格合并时（高频连按 / 卡顿后补播）每格摊薄到 ~30ms，让视觉追上游戏状态。
+      const dur = 0.028 * cells + 0.012;
       this.active = {
         kind: 'walk',
         fromX,
@@ -146,7 +153,7 @@ export class CatMotionAnimator {
         toY: to.y,
         seg: 0,
         t: 0,
-        durSeg: 0.15,
+        durSeg: 0.11,
       };
       return;
     }
@@ -176,7 +183,13 @@ export class CatMotionAnimator {
         this.begin(next);
       } else {
         // 直接设置位置，避免每次都计算
-        const c = gridCenterPx(catGridX, catGridY, this.gridW, this.gridH, this.tile);
+        const c = gridCenterPx(
+          catGridX,
+          catGridY,
+          this.gridW,
+          this.gridH,
+          this.tile,
+        );
         if (this.px !== c.x || this.py !== c.y) {
           this.px = c.x;
           this.py = c.y;
@@ -187,10 +200,10 @@ export class CatMotionAnimator {
 
     const a = this.active;
     if (!a) return;
-    
+
     // 避免除以零
     const dtNormalized = dt > 0 ? dt : 0.001;
-    
+
     if (a.kind === 'walk') {
       a.t += dtNormalized / a.dur;
       if (a.t >= 1) {
@@ -209,7 +222,7 @@ export class CatMotionAnimator {
       // 预计算中间点
       const midX = lerp(a.fromX, a.toX, 0.55);
       const midY = lerp(a.fromY, a.toY, 0.55);
-      
+
       a.t += dtNormalized / a.durSeg;
       if (a.t >= 1) {
         if (a.seg === 0) {
@@ -222,7 +235,7 @@ export class CatMotionAnimator {
         }
         return;
       }
-      
+
       const u = easeOutQuad(a.t);
       if (a.seg === 0) {
         this.px = lerp(a.fromX, midX, u);
@@ -237,7 +250,7 @@ export class CatMotionAnimator {
     // 跳跃动画
     const midX = lerp(a.fromX, a.toX, 0.5);
     const midY = lerp(a.fromY, a.toY, 0.5);
-    
+
     a.t += dtNormalized / a.durSeg;
     if (a.t >= 1) {
       if (a.seg === 0) {
@@ -250,7 +263,7 @@ export class CatMotionAnimator {
       }
       return;
     }
-    
+
     const u = easeOutQuad(a.t);
     const arc = Math.sin(u * Math.PI);
     if (a.seg === 0) {

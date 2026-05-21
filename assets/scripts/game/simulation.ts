@@ -17,19 +17,25 @@ import type { MotionEvent } from './motionTypes';
 export const DEFAULT_LEVEL_TIME_SEC = 30;
 
 /**
- * 持续按住方向键 / 摇杆时，"走一格"动作之间的最小间隔（秒）。
+ * 持续按住方向键 / 摇杆时，"走一格"逻辑动作之间的最小间隔（秒）。
  *
- * - 数值越大，连走速度越慢，走路动画也越能看清；
- * - 仅影响"连走"节奏，单次轻点不受此值限制；
+ * - 仅控制游戏逻辑节奏（多久允许进入下一格），**不**直接控制视觉移动时长；
+ *   走路视觉时长固定由 CatMotionAnimator 的原版公式产生（单格 ~40ms，
+ *   2 格合并 ~68ms，配合 easeOutQuad 永远保持平滑曲线）。
+ * - 数值越大 → 连走越慢，猫会在两格之间静止等待，方便看清走路帧；
+ * - 数值越小 → 连走越快，到 0.04 以下视觉时长会超过 cooldown，
+ *   后续输入进入合并队列，由 CatMotionAnimator 的 merge 逻辑吸收（视觉仍平滑）；
+ * - 60fps 下硬上限约 30 格/秒（受帧率量化制约），再小也不会更快；
  * - 调试时可直接修改这里，或在 GameController Inspector 的
- *   `Walk Repeat Interval Sec` 上微调（Inspector 优先级更高）；
- * - 为避免出现"走一步停一停"的卡顿感，CatMotionAnimator 的 walk 段
- *   视觉时长会被同步设为这个值（见 GameController 注入逻辑）。
+ *   `Walk Repeat Interval Sec` 上微调（Inspector 优先级更高，且不需要重新编译）。
  *
- * 旧版手感参考：0.045（约 22 格/秒，过快）。
- * 当前默认：0.12（约 8 格/秒，可清晰看到走路动画）。
+ * 参考档位：
+ *   0.045 = 原版手感（约 22 格/秒，**当前默认**）
+ *   0.08  = 偏慢，能看清两格之间的步子
+ *   0.12  = 明显慢节奏，每格之间约停顿 80ms
+ *   0.03  = 比原版略快（视觉走平滑，逻辑节奏更紧凑）
  */
-export const WALK_REPEAT_INTERVAL_SEC = 0.12;
+export const WALK_REPEAT_INTERVAL_SEC = 0.045;
 
 export type GameSoundHooks = {
   onLevelStart?: () => void;
@@ -80,7 +86,7 @@ export class GameSimulation {
   stunnedRemaining = 0;
   actionCooldown = 0;
   /**
-   * 连走时每格之间的最小间隔。运行时可由 GameController 从 Inspector 注入覆盖，
+   * 连走时每格之间的逻辑最小间隔。运行时可由 GameController 从 Inspector 注入覆盖，
    * 默认取 `WALK_REPEAT_INTERVAL_SEC`。
    */
   walkRepeatIntervalSec = WALK_REPEAT_INTERVAL_SEC;

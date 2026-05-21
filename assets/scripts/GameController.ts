@@ -208,13 +208,15 @@ export class GameController extends Component {
 
   @property({
     tooltip:
-      '【调试用】持续按住方向键 / 摇杆时，连走 1 格之间的最小间隔（秒）。' +
-      '值越大走得越慢，便于看清走路动画。' +
-      '同时同步给走路视觉时长，避免出现"走一步顿一下"。' +
-      '0 或负值时退回 simulation.WALK_REPEAT_INTERVAL_SEC 默认值。' +
-      '参考：0.045 = 旧版手感（很快，约 22 格/秒）；0.12 = 当前默认（约 8 格/秒）；0.2 = 较慢（5 格/秒）。',
+      '【调试用】连走时"下一格"之间的最小逻辑间隔（秒）。' +
+      '走路视觉时长固定由 CatMotionAnimator 原版公式产生（单格 ~40ms 平滑曲线），本值只控逻辑节奏：' +
+      '0.045 = 原版手感（约 22 格/秒，默认）；' +
+      '0.08~0.12 = 慢节奏，猫会在两格之间静止等待，方便看清走路动画；' +
+      '<0.04 = 比原版快，多余输入由 CatMotionAnimator 的合并队列吸收（视觉仍平滑）；' +
+      '60fps 下硬上限约 30 格/秒，调更小不会更快；' +
+      '0 或负值则退回 WALK_REPEAT_INTERVAL_SEC 默认值。',
   })
-  walkRepeatIntervalSec = 0.12;
+  walkRepeatIntervalSec = 0.045;
 
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;
@@ -1839,16 +1841,19 @@ export class GameController extends Component {
   }
 
   /**
-   * 把 Inspector 调出来的 `walkRepeatIntervalSec` 同时下发给：
-   * - `GameSimulation.walkRepeatIntervalSec`：决定连走时每次 `tryMove` 之间的最小间隔；
-   * - `CatMotionAnimator.walkSecPerCell`：决定单格走路视觉时长，保持与上者一致避免顿挫。
-   * 设 ≤ 0 时退回 simulation 的默认常量（`WALK_REPEAT_INTERVAL_SEC`）。
+   * 把 Inspector 调出来的 `walkRepeatIntervalSec` 下发给
+   * `GameSimulation.walkRepeatIntervalSec`，控制连走 `tryMove` 之间的最小逻辑间隔。
+   *
+   * 注意：**不**同步给 CatMotionAnimator——走路视觉时长固定走原版 `0.028 * cells + 0.012`
+   * 公式以保证 easeOutQuad 曲线在 60fps 下永远平滑（实测把视觉时长压到等于 cooldown 时，
+   * 单帧会出现 "97% → 100% 贴 grid → 静止 → 下一格 97%" 的卡顿短跳，反而感觉变慢）。
+   *
+   * 设 ≤ 0 时退回 `WALK_REPEAT_INTERVAL_SEC` 默认值。
    */
   private applyWalkSpeedConfig(): void {
     const v = this.walkRepeatIntervalSec;
     const sec = v > 0 ? v : WALK_REPEAT_INTERVAL_SEC;
     this.sim.walkRepeatIntervalSec = sec;
-    this.anim.walkSecPerCell = sec;
   }
 
   /**
