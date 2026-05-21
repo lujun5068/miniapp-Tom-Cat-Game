@@ -96,6 +96,16 @@ export const catSkins: CatSkin[] = [
     speedBuff: 0.018,
     visualTint: { r: 110, g: 120, b: 155 },
   },
+  {
+    id: 'girl',
+    name: '小萝莉',
+    price: 200,
+    description: '可爱的萝莉，增加移速和攻击效果,专属音效',
+    isDefault: false,
+    category: 'cat',
+    speedBuff: 0.022,
+    visualTint: { r: 110, g: 120, b: 155 },
+  },
 ];
 
 export function getCatSkinById(skinId: string): CatSkin {
