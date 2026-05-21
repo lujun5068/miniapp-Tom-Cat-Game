@@ -98,11 +98,15 @@ export interface CatSkin {
   price: number;
   description: string;
   isDefault: boolean;
-  visualTint: { r: number; g: number; b: number };
+  category: string;                 // 共用音频组 key：cat / fox / boar / ...（见 §4.3）
+  speedBuff: number;                // 从基础走路间隔中扣除的秒数（>0 即更快，见 §4.4）
+  visualTint: { r: number; g: number; b: number };  // 仅 fallback 色块时生效（见说明）
 }
 ```
 
-当前 5 个皮肤：`default`（免费，初始可用）/ `ninja` / `pirate` / `fox` / `boar`，价格 / 描述以 [`game/skinConfig.ts`](../assets/scripts/game/skinConfig.ts) `catSkins` 数组为准。`visualTint` 仍保留，用于在帧组之外叠加色调（也可作为 fallback 的最低可见反馈）。
+当前 7 个皮肤：`default`（免费，初始可用）/ `ninja` / `pirate` / `fox` / `boar` / `wolf` / `ying`，价格 / 描述以 [`game/skinConfig.ts`](../assets/scripts/game/skinConfig.ts) `catSkins` 数组为准。
+
+- `visualTint` **只在贴图加载失败、`BoardView` 回退到 entityGfx 色块圆点时生效**，作为最低可见反馈。贴图路径自 2026-05-21 起强制走 `CAT_SPRITE_NEUTRAL_TINT = (255,255,255)`，不再用 `Sprite.color` 做乘法染色（modulate 会把贴图整体压暗，正常情况下玩家根本看不到这个颜色）。后续若想让贴图也叠加皮肤色调，需要换成非 modulate 的混合方式（自定义 shader），不能直接复用 `Sprite.color`。详见 [`CHANGELOG.md`](./CHANGELOG.md) 2026-05-21 "修复非默认皮肤贴图整体偏暗"。
 
 ### 4.1 资源目录约定
 
@@ -124,7 +128,7 @@ assets/resources/cat-skins/
 ### 4.2 加载与切换流程
 
 - 加载：`assets/scripts/game/catSkinLoader.ts` 暴露 `loadCatSkinFrames(skinId, fallback='default')`，按 4 个动作目录顺序加载；某动作目录加载失败 / 为空时自动回退到 `default` 同名目录。
-- 应用：`GameController.applyCurrentCatSkin()` 同时设 `visualTint`、异步触发 `applyCatSkinFrames(skinId)` 与 `applyCatSkinAudio(category)`（见 §4.3）；前者拿到帧后再次 `BoardView.configureCatFrameAnimations`，并在写入前用 `boardView.isValid` 防御场景切换导致的并发问题。
+- 应用：`GameController.applyCurrentCatSkin()` 同时设 `visualTint`（fallback 用，详见 §4 接口注释）、调用 `applyWalkSpeedConfig()` 把当前皮肤的 `speedBuff` 应用到走路冷却（见 §4.4）、异步触发 `applyCatSkinFrames(skinId)` 与 `applyCatSkinAudio(category)`（见 §4.3）；前者拿到帧后再次 `BoardView.configureCatFrameAnimations`，并在写入前用 `boardView.isValid` 防御场景切换导致的并发问题。
 - 兑换：在个人中心点击"兑换"调用 `unlockSkin(skinId)`，成功后立刻调用 `setCurrentSkin(skinId)`。
 - 切换：在已解锁的非当前皮肤上点击"使用"，调用 `setCurrentSkin(skinId)`；默认皮肤可重新切回但不展示兑换按钮。
 - 生效时机：玩家从个人中心返回主场景时（`loadMainGameScene()`）主场景会重新 `onLoad` → `applyCurrentCatSkin` → 加载新皮肤帧 + 音频；当前不支持主场景内热切换（也不必要，PersonalCenterPage 入口本身就是一次性的离开 / 返回）。
@@ -150,6 +154,18 @@ assets/resources/cat-audios/
   - **主循环 BGM 已不在 Inspector**：移出到 `assets/audio-stream/bgm_main_loop.m4a` + 配套 `audio-stream.meta`（`isBundle: true`，`compressionType.wechatgame: 'subpackage'`）。`GameController.applyStreamingBgm()` 在 `onLoad` 异步 `assetManager.loadBundle('audio-stream')` → `bundle.load('bgm_main_loop', AudioClip)` → `CocosGameAudio.setBgmClip(clip)`。`setBgmClip` 内部已处理"clip 注入时 BGM 已被用户开启 + 已 unlock 则立即播放"的时序。目的是把 ~490KB 的 BGM 从首包剥离到微信小游戏分包，详见 §6。
 - 增加新 category：在 `assets/resources/cat-audios/` 下新建同名目录放 4 个 m4a 即可，无需改任何代码；`skinConfig` 中皮肤标记上该 category 后下次进入主场景即生效。
 - 平台注意：微信小游戏部分机型对 m4a 解码兼容性差异较大，必要时把全部 m4a 转 mp3 重新导入（同名 + 同 meta uuid 即可，`resources.load('cat-audios/cat/start', AudioClip)` 路径不含后缀）。
+
+### 4.4 皮肤移速 buff
+
+`CatSkin.speedBuff` 字段（单位：秒，>= 0）让每个皮肤可以拥有不同的走路速度。
+
+- **计算公式**：实际下发给 `GameSimulation.walkRepeatIntervalSec` 的值 = `max(Inspector.walkRepeatIntervalSec − speedBuff, MIN_WALK_REPEAT_INTERVAL_SEC)`。`walkRepeatIntervalSec` 是「下一格之间的最小逻辑间隔」，值越小走得越快，所以 `speedBuff` 越大越快。
+- **基础间隔**：`GameController.walkRepeatIntervalSec` 是 Inspector 配置（默认 0.045，`scene-001.scene` 当前设为 0.08），代表「无任何皮肤加成时的基础节奏」。
+- **下限兜底**：`assets/scripts/game/simulation.ts` 的 `MIN_WALK_REPEAT_INTERVAL_SEC = 0.005`。扣减后小于该值会贴齐下限，避免出现 0 / 负值把 `actionCooldown` 逻辑打穿；实际 60fps 下硬上限约 30 格/秒，再小也不会更快。
+- **当前配置（参考）**：`fox` 0.02 最快 · `boar / wolf / ying` 0.015 · `ninja / pirate` 0.005 · `default` 0。
+- **应用入口**：`GameController.applyWalkSpeedConfig()` 读取 `scoreManager.getCurrentSkin()` 拿到当前皮肤后做上述计算并下发；`onLoad` 初始化时调用一次，`applyCurrentCatSkin` 内也调用一次（覆盖未来场景内热切换皮肤的场景）。
+- **生效时机**：与皮肤帧组 / 音频同步，玩家从个人中心切皮肤回主场景 → `onLoad` 即生效，无需重启小游戏。
+- 注意：本字段**只影响走路节奏**，跳跃 / 攻击自身的 cooldown 是固定的 0.088 / 0.25s，不受 `speedBuff` 影响。
 
 ---
 

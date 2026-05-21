@@ -13,7 +13,7 @@
 
 #### 已完成
 - 皮肤系统骨架：`game/skinConfig.ts` 定义皮肤元数据，`ScoreManager` 负责解锁 / 切换。
-- 皮肤美术资源接入：5 套皮肤帧组 `default / ninja / pirate / fox / boar`，每套含 `start / walk1 / walk2 / xuanyun / attack`（`fox` 暂未提供 attack，运行时复用 walk1）；`default` 在 `assets/resources/cat-skins/default/`，其余在 `assets/skin-pack/cat-skins/<id>/`（参与 `skin-pack` 分包）。由 `game/catSkinLoader.ts` 通过 `resources.loadDir` / `bundle.loadDir` 运行时按当前皮肤加载，`GameController.applyCurrentCatSkin` 同时设置 `visualTint` 与异步切换帧组（参考 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4、§10）。
+- 皮肤美术资源接入：7 套皮肤帧组 `default / ninja / pirate / fox / boar / wolf / ying`，每套含 `start / walk1 / walk2 / xuanyun / attack`（`fox` 暂未提供 attack，运行时复用 walk1）；`default` 在 `assets/resources/cat-skins/default/`，其余在 `assets/skin-pack/cat-skins/<id>/`（参与 `skin-pack` 分包）。由 `game/catSkinLoader.ts` 通过 `resources.loadDir` / `bundle.loadDir` 运行时按当前皮肤加载，`GameController.applyCurrentCatSkin` 异步切换帧组与音频、并调用 `applyWalkSpeedConfig` 把皮肤 `speedBuff` 应用到走路冷却（贴图染色 `visualTint` 自 2026-05-21 起仅作为色块 fallback，避免乘法 modulate 把贴图整体压暗；参考 [`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §4 / §4.4 / §10）。
 - 关卡限时 + 难度梯度：每关 30 秒、关卡上限 30 关、老鼠数量与步进随关卡递增（`GameSimulation`）。
 
 #### 待办

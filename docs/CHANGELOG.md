@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-05-21
+
+### 皮肤移速 buff 接入（`speedBuff` 字段真正生效）
+
+- **背景**：`skinConfig.CatSkin.speedBuff` 字段早已定义（每皮肤 0 ~ 0.02），但全工程**无一处读取**，等同摆设；所有皮肤跑起来速度一样。
+- **接入**：[`GameController.applyWalkSpeedConfig`](../assets/scripts/GameController.ts) 改为「基础 `walkRepeatIntervalSec` − 当前皮肤 `speedBuff`」后下发给 `GameSimulation.walkRepeatIntervalSec`（值越小走越快）；同时在 [`applyCurrentCatSkin`](../assets/scripts/GameController.ts) 末尾追加 `applyWalkSpeedConfig()` 调用，确保「以后若支持场景内热切换皮肤」也能即时刷新。
+- **兜底**：[`game/simulation.ts`](../assets/scripts/game/simulation.ts) 新增 `MIN_WALK_REPEAT_INTERVAL_SEC = 0.005`，扣减后小于该值时贴齐下限，防止 0 / 负值打穿 `actionCooldown` 逻辑（实际 60fps 下硬上限约 30 格/秒，再小也不会更快）。
+- **配置语义**：`skinConfig.ts` 内 `speedBuff` 字段补完整 doc 注释，明确「单位秒，从基础间隔中**扣除**，越大越快，建议 0 ~ 0.03」；具体数值见 `catSkins` 数组（fox 0.02 最快、boar/wolf/ying 0.015、ninja/pirate 0.005、default 0）。
+- **生效时机**：玩家从个人中心切皮肤回主场景 → `onLoad` 重走一遍即生效，无需重启小游戏。
+
+### 修复非默认皮肤贴图整体偏暗
+
+- **问题症状**：除 default 外所有皮肤（ninja / pirate / fox / boar / wolf / ying）在棋盘里看起来比贴图原色明显发暗、且带偏色。
+- **根因**：[`BoardView.drawEntities`](../assets/scripts/BoardView.ts) 把皮肤的 `visualTint` 直接赋给 `catSpr.color`，而 Cocos `Sprite.color` 是 **乘法 modulate**（`pixel_rgb * color_rgb / 255`），任何 < 255 的通道都会等比压暗贴图。例如 ninja 的 `(110,120,155)` 等效让贴图亮度只剩 43%~61%。这套 tint 是早期"色块占位时代"作为皮肤主题色设计的，帧组接入后变成纯副作用。
+- **修复**：贴图分支强制走新常量 `CAT_SPRITE_NEUTRAL_TINT = (255,255,255,255)`（modulate 1.0 = 不染色）；色块 fallback 分支保留 `this.catTint`，作为「贴图加载失败时的最低可见反馈」。眩晕泛红色也抽出常量 `CAT_SPRITE_STUN_TINT` 复用，避免 `drawEntities` 每帧 `new Color()`。
+- **配套注释**：`BoardView.setCatVisualTint` 与 `skinConfig.CatSkin.visualTint` 都更新 doc，明确"仅 fallback 色块时生效；若将来想让贴图也叠加皮肤色调需要换非 modulate 的混合方式（自定义 shader）"。
+- **零配置改动**：现有 `visualTint` 数值无需调整，default 不受影响（本来就是白色）。
+
+### 修复连走中按攻击 / 跳跃丢输入
+
+- **问题症状**：玩家长按方向键连走过程中再按 `SPACE / J` 或屏幕攻跳按钮，攻击 / 跳跃完全不响应。
+- **根因**：[`GameSimulation`](../assets/scripts/game/simulation.ts) 用同一个 `actionCooldown` 同时管走路节奏 + 攻跳间隔。`tryMove` 后 cooldown 被设为 `walkRepeatIntervalSec`（45~80ms），期间 `tryJump / tryPounce` 第一行 `canAct()` 检查 `actionCooldown > 0` 直接 return；键盘 SPACE/J 又用了 `!keyRepeat` 单次触发，一次没响就彻底丢。
+- **修复（拆冷却）**：保留 `actionCooldown` 专给攻跳用；新增 `walkCooldown` 字段专给走路用。`tryMove` 走完写 `walkCooldown`；`tryJump / tryPounce` 写 `actionCooldown`。`canAct()` 故意**不**检查 `walkCooldown`（走路冷却不阻塞完全不同的动作）；新增 `canWalk() = canAct() && walkCooldown <= 0`，`tryMove` 改用 `canWalk`。攻跳的 `actionCooldown` 仍同时阻挡走路，避免攻击 / 跳跃的视觉位移期间又被 `tryMove` 插队造成"逻辑跑在视觉前面"的瞬移。
+- **行为对照**：
+  - 连走中按攻击 / 跳跃 → 修复前丢失，修复后立即生效并打断走路节奏；
+  - 攻跳后 0.088 / 0.25s 内 → 仍受动作冷却保护，攻跳与走路都被挡（视觉一致）；
+  - 连走节奏 → `walkCooldown` 仍是 `walkRepeatIntervalSec`，22 格/秒手感不变。
+- **影响面**：`actionCooldown` 字段经 grep 仅在 `simulation.ts` 内部使用，新增 `walkCooldown` 后外部调用方（GameController / 动画器）零改动。
+
+---
+
 ## 2026-05-20
 
 ### 皮肤 attack 帧组
