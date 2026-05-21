@@ -39,6 +39,7 @@ import {
   GameSimulation,
   DEFAULT_LEVEL_TIME_SEC,
   WALK_REPEAT_INTERVAL_SEC,
+  MIN_WALK_REPEAT_INTERVAL_SEC,
 } from './game/simulation';
 import { gameSession } from './game/sessionState';
 import { loadLevelSave } from './storage/levelSave';
@@ -1825,6 +1826,7 @@ export class GameController extends Component {
   private applyCurrentCatSkin(): void {
     const skin = getCatSkinById(this.scoreManager.getCurrentSkin());
     this.boardView?.setCatVisualTint(skin.visualTint);
+    this.applyWalkSpeedConfig();
     void this.applyCatSkinFrames(skin.id);
     void this.applyCatSkinAudio(skin.category);
   }
@@ -1841,18 +1843,25 @@ export class GameController extends Component {
   }
 
   /**
-   * 把 Inspector 调出来的 `walkRepeatIntervalSec` 下发给
-   * `GameSimulation.walkRepeatIntervalSec`，控制连走 `tryMove` 之间的最小逻辑间隔。
+   * 把 Inspector 调出来的 `walkRepeatIntervalSec` 减去当前皮肤的 `speedBuff` 后，
+   * 下发给 `GameSimulation.walkRepeatIntervalSec`，控制连走 `tryMove` 之间的最小逻辑间隔。
+   *
+   * - Inspector `walkRepeatIntervalSec`：无皮肤加成时的「基础」走路间隔（秒，越小越快）。
+   *   设 ≤ 0 时退回 `WALK_REPEAT_INTERVAL_SEC` 默认值。
+   * - 皮肤 `speedBuff`：要从基础间隔中**扣除**的秒数（越大越快），由 `skinConfig.ts` 配置。
+   * - 兜底：扣减后若 ≤ `MIN_WALK_REPEAT_INTERVAL_SEC` 则贴齐该下限，避免出现 0/负值
+   *   把 simulation 的冷却逻辑打穿（实际 60fps 下硬上限约 30 格/秒，再小也不会更快）。
    *
    * 注意：**不**同步给 CatMotionAnimator——走路视觉时长固定走原版 `0.028 * cells + 0.012`
    * 公式以保证 easeOutQuad 曲线在 60fps 下永远平滑（实测把视觉时长压到等于 cooldown 时，
    * 单帧会出现 "97% → 100% 贴 grid → 静止 → 下一格 97%" 的卡顿短跳，反而感觉变慢）。
-   *
-   * 设 ≤ 0 时退回 `WALK_REPEAT_INTERVAL_SEC` 默认值。
    */
   private applyWalkSpeedConfig(): void {
     const v = this.walkRepeatIntervalSec;
-    const sec = v > 0 ? v : WALK_REPEAT_INTERVAL_SEC;
+    const base = v > 0 ? v : WALK_REPEAT_INTERVAL_SEC;
+    const skin = getCatSkinById(this.scoreManager.getCurrentSkin());
+    const buff = skin.speedBuff > 0 ? skin.speedBuff : 0;
+    const sec = Math.max(base - buff, MIN_WALK_REPEAT_INTERVAL_SEC);
     this.sim.walkRepeatIntervalSec = sec;
   }
 

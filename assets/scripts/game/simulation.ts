@@ -37,6 +37,13 @@ export const DEFAULT_LEVEL_TIME_SEC = 30;
  */
 export const WALK_REPEAT_INTERVAL_SEC = 0.045;
 
+/**
+ * 走路间隔的安全下限（秒）。皮肤 speedBuff 扣减后不允许低于此值，
+ * 用于兜底防止出现 0 / 负值把 simulation 的 actionCooldown 逻辑打穿。
+ * 实际 60fps 下硬上限约 30 格/秒，再小也不会更快，所以 0.005 留作上限之上的余量即可。
+ */
+export const MIN_WALK_REPEAT_INTERVAL_SEC = 0.005;
+
 export type GameSoundHooks = {
   onLevelStart?: () => void;
   onStun?: () => void;
