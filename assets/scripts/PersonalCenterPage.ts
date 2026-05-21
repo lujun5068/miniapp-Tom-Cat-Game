@@ -72,6 +72,12 @@ const SKIN_CARD_HEIGHT =
 const SKIN_CARD_GAP = 16;
 const SKIN_PANEL_HEADER_HEIGHT = 86;
 const SKIN_PANEL_BOTTOM_PAD = 24;
+/**
+ * 皮肤商店"内容区"高度上限（相对屏幕可视高度的比例）。
+ * 超过此值的皮肤行会在商店内部 ScrollView 滚动，而不是把整个页面撑高。
+ * 0.55 ≈ 让积分卡片在页面顶部始终可见、商店区占下半屏。最小高度至少能完整放一行卡片。
+ */
+const SKIN_PANEL_BODY_MAX_HEIGHT_RATIO = 0.4;
 
 type SkinRowState = {
   node: Node;
@@ -235,7 +241,7 @@ export class PersonalCenterPage extends Component {
 
     this.buildHeader(content, contentW);
     this.buildScoreCard(content, contentW);
-    const pageHeight = this.buildSkinPanel(content, contentW);
+    const pageHeight = this.buildSkinPanel(content, contentW, vs.height);
     content
       .getComponent(UITransform)!
       .setContentSize(contentW, Math.max(vs.height, pageHeight));
@@ -440,10 +446,7 @@ export class PersonalCenterPage extends Component {
     const zoneRight = cardW * 0.5 - 140 - 16;
     const zoneWidth = Math.max(0, zoneRight - zoneLeft);
     const pillGap = 14;
-    const pillWidth = Math.max(
-      120,
-      Math.min(220, (zoneWidth - pillGap) / 2),
-    );
+    const pillWidth = Math.max(120, Math.min(220, (zoneWidth - pillGap) / 2));
     const pill1X = zoneLeft + pillWidth * 0.5;
     const pill2X = zoneRight - pillWidth * 0.5;
 
@@ -462,9 +465,10 @@ export class PersonalCenterPage extends Component {
     this.statPills.push(pill1, pill2);
 
     if (this.scoreShareHintLabel) {
-      this.scoreShareHintLabel.string = this.scoreManager.canClaimShareRewardToday()
-        ? '每日将游戏分享给微信好友或群聊可获得额外积分奖励！'
-        : '今日分享奖励已领取，明天再来分享可继续获得 +10';
+      this.scoreShareHintLabel.string =
+        this.scoreManager.canClaimShareRewardToday()
+          ? '每日将游戏分享给微信好友或群聊可获得额外积分奖励！'
+          : '今日分享奖励已领取，明天再来分享可继续获得 +10';
     }
 
     // 分数 / 已解锁皮肤数变化后同步刷新微信分享卡片文案，
@@ -472,14 +476,25 @@ export class PersonalCenterPage extends Component {
     this.setupShare();
   }
 
-  private buildSkinPanel(parent: Node, contentW: number): number {
-    const columns = this.skinGridColumns(contentW - 40);
+  private buildSkinPanel(
+    parent: Node,
+    contentW: number,
+    viewportH: number,
+  ): number {
+    const innerW = contentW - 40;
+    const columns = this.skinGridColumns(innerW);
     const rowCount = Math.ceil(catSkins.length / columns);
-    const panelH =
-      SKIN_PANEL_HEADER_HEIGHT +
-      rowCount * SKIN_CARD_HEIGHT +
-      Math.max(0, rowCount - 1) * SKIN_CARD_GAP +
-      SKIN_PANEL_BOTTOM_PAD;
+    // 网格实际占用高度（按所有皮肤铺开）
+    const desiredBodyH =
+      rowCount * SKIN_CARD_HEIGHT + Math.max(0, rowCount - 1) * SKIN_CARD_GAP;
+    // 内容区显示高度上限：屏幕的 SKIN_PANEL_BODY_MAX_HEIGHT_RATIO，
+    // 至少保证能完整放一行卡片，避免极端小屏下视口变成 0 / 负值。
+    const maxBodyH = Math.max(
+      SKIN_CARD_HEIGHT + SKIN_CARD_GAP,
+      Math.floor(viewportH * SKIN_PANEL_BODY_MAX_HEIGHT_RATIO),
+    );
+    const bodyH = Math.min(desiredBodyH, maxBodyH);
+    const panelH = SKIN_PANEL_HEADER_HEIGHT + bodyH + SKIN_PANEL_BOTTOM_PAD;
     this.skinPanel = this.addPanel(
       parent,
       'SkinPanel',
@@ -488,35 +503,55 @@ export class PersonalCenterPage extends Component {
       BODY_TOP,
       18,
     );
-    this.buildSkinList(this.skinPanel, contentW);
+    this.buildSkinList(this.skinPanel, contentW, bodyH, desiredBodyH);
     return BODY_TOP + panelH + PAGE_H_PAD;
   }
 
-  private buildSkinList(panel: Node, panelW: number): void {
+  /**
+   * 在 panel 中放皮肤网格。**核心策略**：
+   * - `desiredBodyH <= viewportBodyH` → 一屏放得下，普通容器即可，无 ScrollView 开销；
+   * - `desiredBodyH >  viewportBodyH` → 套一层内部 `addScrollArea`，视口只显示 viewportBodyH，
+   *   超出的行在商店内部纵向滚动，**避免把整个页面（外层 mainScrollView）撑长**。
+   *
+   * 注意：内层与外层 mainScrollView 同向（纵向）会有手势归属——Cocos 默认子 ScrollView
+   * 优先吃 touch。用户在商店区域 swipe 时只会滚商店内部，要看积分卡片需把整页先向上滑。
+   * 这正是用户预期：商店"自带固定高度滚动条"，与积分卡片视觉解耦。
+   */
+  private buildSkinList(
+    panel: Node,
+    panelW: number,
+    viewportBodyH: number,
+    desiredBodyH: number,
+  ): void {
     this.addSectionTitle(panel, '皮肤商店', '兑换后可在游戏内立即生效');
 
     const viewportW = panelW - 40;
-    const gridH = panel.getComponent(UITransform)!.height - SKIN_PANEL_HEADER_HEIGHT - SKIN_PANEL_BOTTOM_PAD;
-    const content = addNode(
-      panel,
-      'SkinGrid',
-      viewportW,
-      gridH,
-    );
-    content.getComponent(UITransform)!.setAnchorPoint(0.5, 1);
-    content.setPosition(0, panel.getComponent(UITransform)!.height * 0.5 - SKIN_PANEL_HEADER_HEIGHT, 0);
-    this.skinContent = content;
-    this.skinRows = new Map();
+    const panelH = panel.getComponent(UITransform)!.height;
+    // 内容区中心 Y：放在 header 下方 viewportBodyH/2 处（panel 锚点 0.5,0.5）
+    const hostCenterY =
+      panelH * 0.5 - SKIN_PANEL_HEADER_HEIGHT - viewportBodyH * 0.5;
+    const needsScroll = desiredBodyH > viewportBodyH + 1;
 
-    const columns = this.skinGridColumns(viewportW);
-    const rowCount = Math.ceil(catSkins.length / columns);
-    this.skinContent
-      .getComponent(UITransform)!
-      .setContentSize(
+    let host: Node;
+    if (needsScroll) {
+      const area = this.addScrollArea(
+        panel,
+        'SkinGridScroll',
         viewportW,
-        rowCount * SKIN_CARD_HEIGHT +
-          Math.max(0, rowCount - 1) * SKIN_CARD_GAP,
+        viewportBodyH,
+        hostCenterY,
       );
+      host = area.content;
+    } else {
+      host = addNode(panel, 'SkinGrid', viewportW, viewportBodyH);
+      host.getComponent(UITransform)!.setAnchorPoint(0.5, 1);
+      host.setPosition(0, hostCenterY + viewportBodyH * 0.5, 0);
+    }
+    // content 高度按"实际所有行加起来"算，ScrollView 据此判定可滚距离；
+    // 普通容器路径下高度只是占位（卡片靠绝对 y 定位，不受容器高度影响）。
+    host.getComponent(UITransform)!.setContentSize(viewportW, desiredBodyH);
+    this.skinContent = host;
+    this.skinRows = new Map();
 
     this.refreshSkinList();
   }
@@ -551,15 +586,11 @@ export class PersonalCenterPage extends Component {
       const isCurrent = skinId === currentSkin;
       const col = i % columns;
       const row = Math.floor(i / columns);
-      const x = -viewportW * 0.5 + 4 + cardW * 0.5 + col * (cardW + SKIN_CARD_GAP);
+      const x =
+        -viewportW * 0.5 + 4 + cardW * 0.5 + col * (cardW + SKIN_CARD_GAP);
       const y = -row * rowH - cardH * 0.5;
 
-      const rowState = this.createSkinRow(
-        this.skinContent,
-        skin,
-        cardW,
-        cardH,
-      );
+      const rowState = this.createSkinRow(this.skinContent, skin, cardW, cardH);
       this.skinRows.set(skinId, rowState);
       rowState.node.setPosition(x, y, 0);
 
@@ -587,12 +618,24 @@ export class PersonalCenterPage extends Component {
     let cursorY = top - SKIN_CARD_PREVIEW_H * 0.5;
     tint.setPosition(0, cursorY, 0);
 
-    cursorY -= SKIN_CARD_PREVIEW_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_NAME_H * 0.5;
-    const name = addLabel(row, 'Name', skin.name, 18, UiTheme.cream, w - 18, SKIN_CARD_NAME_H);
+    cursorY -=
+      SKIN_CARD_PREVIEW_H * 0.5 +
+      SKIN_CARD_SECTION_GAP +
+      SKIN_CARD_NAME_H * 0.5;
+    const name = addLabel(
+      row,
+      'Name',
+      skin.name,
+      18,
+      UiTheme.cream,
+      w - 18,
+      SKIN_CARD_NAME_H,
+    );
     name.horizontalAlign = Label.HorizontalAlign.CENTER;
     name.node.setPosition(0, cursorY, 0);
 
-    cursorY -= SKIN_CARD_NAME_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_DESC_H * 0.5;
+    cursorY -=
+      SKIN_CARD_NAME_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_DESC_H * 0.5;
     const desc = addLabel(
       row,
       'Desc',
@@ -606,7 +649,8 @@ export class PersonalCenterPage extends Component {
     desc.verticalAlign = Label.VerticalAlign.TOP;
     desc.node.setPosition(0, cursorY, 0);
 
-    cursorY -= SKIN_CARD_DESC_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_PRICE_H * 0.5;
+    cursorY -=
+      SKIN_CARD_DESC_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_PRICE_H * 0.5;
     const priceLabel = addLabel(
       row,
       'Price',
@@ -619,7 +663,10 @@ export class PersonalCenterPage extends Component {
     priceLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
     priceLabel.node.setPosition(0, cursorY, 0);
 
-    cursorY -= SKIN_CARD_PRICE_H * 0.5 + SKIN_CARD_SECTION_GAP + SKIN_CARD_STATUS_H * 0.5;
+    cursorY -=
+      SKIN_CARD_PRICE_H * 0.5 +
+      SKIN_CARD_SECTION_GAP +
+      SKIN_CARD_STATUS_H * 0.5;
     const statusLabel = addLabel(
       row,
       'Status',
@@ -819,7 +866,12 @@ export class PersonalCenterPage extends Component {
     overlay.addComponent(BlockInputEvents);
     this.node.addChild(overlay);
 
-    const backdrop = addNode(overlay, 'Backdrop', view.getVisibleSize().width, view.getVisibleSize().height);
+    const backdrop = addNode(
+      overlay,
+      'Backdrop',
+      view.getVisibleSize().width,
+      view.getVisibleSize().height,
+    );
     this.pinFullScreen(backdrop);
     const backdropG = backdrop.addComponent(Graphics);
     backdropG.fillColor = new Color(0, 0, 0, 170);
@@ -907,7 +959,12 @@ export class PersonalCenterPage extends Component {
     overlay.addComponent(BlockInputEvents);
     this.node.addChild(overlay);
 
-    const backdrop = addNode(overlay, 'Backdrop', view.getVisibleSize().width, view.getVisibleSize().height);
+    const backdrop = addNode(
+      overlay,
+      'Backdrop',
+      view.getVisibleSize().width,
+      view.getVisibleSize().height,
+    );
     this.pinFullScreen(backdrop);
     const backdropG = backdrop.addComponent(Graphics);
     backdropG.fillColor = new Color(0, 0, 0, 170);
@@ -922,7 +979,15 @@ export class PersonalCenterPage extends Component {
     panelWidget.isAlignTop = false;
     panelWidget.isAlignVerticalCenter = true;
 
-    const title = addLabel(panel, 'PopupTitle', '积分流水', 24, UiTheme.cream, 220, 38);
+    const title = addLabel(
+      panel,
+      'PopupTitle',
+      '积分流水',
+      24,
+      UiTheme.cream,
+      220,
+      38,
+    );
     title.horizontalAlign = Label.HorizontalAlign.LEFT;
     title.node.setPosition(-popupW * 0.5 + 130, popupH * 0.5 - 36, 0);
 
@@ -1154,7 +1219,12 @@ export class PersonalCenterPage extends Component {
     const track = addNode(root, 'ScrollTrack', 4, h - 14);
     track.setPosition(w * 0.5 - 8, 0, 0);
     const trackG = track.addComponent(Graphics);
-    trackG.fillColor = new Color(UiTheme.cream.r, UiTheme.cream.g, UiTheme.cream.b, 40);
+    trackG.fillColor = new Color(
+      UiTheme.cream.r,
+      UiTheme.cream.g,
+      UiTheme.cream.b,
+      40,
+    );
     trackG.roundRect(-2, -(h - 14) * 0.5, 4, h - 14, 2);
     trackG.fill();
 
@@ -1185,9 +1255,11 @@ export class PersonalCenterPage extends Component {
     area.track.active = overflow > 1;
     if (overflow <= 1) return;
 
-    const offset = (area.scrollView as unknown as {
-      getScrollOffset?: () => { x: number; y: number };
-    }).getScrollOffset?.();
+    const offset = (
+      area.scrollView as unknown as {
+        getScrollOffset?: () => { x: number; y: number };
+      }
+    ).getScrollOffset?.();
     const progress = Math.max(0, Math.min(1, (offset?.y ?? 0) / overflow));
     const thumbH = Math.max(28, trackH * (viewportH / contentH));
     const thumbY = trackH * 0.5 - thumbH * 0.5 - progress * (trackH - thumbH);
@@ -1195,7 +1267,12 @@ export class PersonalCenterPage extends Component {
     area.thumb.getComponent(UITransform)!.setContentSize(6, thumbH);
     area.thumb.setPosition(area.thumb.position.x, thumbY, 0);
     area.thumbGraphics.clear();
-    area.thumbGraphics.fillColor = new Color(UiTheme.honey.r, UiTheme.honey.g, UiTheme.honey.b, 170);
+    area.thumbGraphics.fillColor = new Color(
+      UiTheme.honey.r,
+      UiTheme.honey.g,
+      UiTheme.honey.b,
+      170,
+    );
     area.thumbGraphics.roundRect(-3, -thumbH * 0.5, 6, thumbH, 3);
     area.thumbGraphics.fill();
   }
