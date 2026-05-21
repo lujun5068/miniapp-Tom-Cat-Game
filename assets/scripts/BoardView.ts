@@ -37,6 +37,13 @@ type CatAnimKey = 'start' | 'walkH' | 'walkV' | 'stun' | 'attack';
 
 type CatAnimPack = {
   secPerFrame: number;
+  /**
+   * 攻击动作专用帧间隔（秒/帧）。与 `secPerFrame` 分离，使攻击的 5 帧动画
+   * 能在更短的攻击移动时长（CatMotionAnimator 中 attack durSeg×2 = 0.3s）
+   * 内完整播完一遍，避免玩家只看到第一帧就被切回 start/walk。
+   * 未单独配置时与 `secPerFrame` 相同（向后兼容）。
+   */
+  attackSecPerFrame: number;
   start: SpriteFrame[];
   walkH: SpriteFrame[];
   walkV: SpriteFrame[];
@@ -257,6 +264,11 @@ export class BoardView extends Component {
     framesStun?: SpriteFrame[] | null;
     framesAttack?: SpriteFrame[] | null;
     frameDurationSec?: number;
+    /**
+     * 攻击专用帧间隔。未提供时与 `frameDurationSec` 相同。
+     * 建议值约 = 攻击移动总时长 / 攻击帧数（典型 0.3 / 5 = 0.06）。
+     */
+    attackFrameDurationSec?: number;
   }): void {
     const start = sortCatSpriteFrames([...(opts.framesStart ?? [])]);
     const walkH = sortCatSpriteFrames([...(opts.framesWalkHorizontal ?? [])]);
@@ -278,8 +290,14 @@ export class BoardView extends Component {
       this.catAnimTime = 0;
       return;
     }
+    const secPerFrame = Math.max(0.04, opts.frameDurationSec ?? 0.1);
+    const attackSecPerFrame = Math.max(
+      0.02,
+      opts.attackFrameDurationSec ?? secPerFrame,
+    );
     this.catAnim = {
-      secPerFrame: Math.max(0.04, opts.frameDurationSec ?? 0.1),
+      secPerFrame,
+      attackSecPerFrame,
       start,
       walkH,
       walkV,
@@ -829,7 +847,8 @@ export class BoardView extends Component {
       this.catAnimTime = 0;
     }
     this.catAnimTime += dt;
-    const idx = Math.floor(this.catAnimTime / pack.secPerFrame) % strip.length;
+    const spf = key === 'attack' ? pack.attackSecPerFrame : pack.secPerFrame;
+    const idx = Math.floor(this.catAnimTime / spf) % strip.length;
     const frame = strip[idx] ?? null;
     const showingStunSheet = key === 'stun' && pack.stun.length > 0;
     return {

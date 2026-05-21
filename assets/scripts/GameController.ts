@@ -196,6 +196,12 @@ export class GameController extends Component {
   })
   catAnimFrameSec = 0.1;
 
+  @property({
+    tooltip:
+      '猫攻击动画专用帧间隔（秒）。建议 ≈ 攻击移动总时长(0.3s) / 攻击帧数(5) ≈ 0.06，使一次扑击恰好播完整套动画。设 0 则与 catAnimFrameSec 相同。',
+  })
+  catAttackFrameSec = 0.06;
+
   @property({ type: SpriteFrame, tooltip: '老鼠单帧（可空则小圆）' })
   sfMouse: SpriteFrame | null = null;
 
@@ -588,6 +594,7 @@ export class GameController extends Component {
       framesStun: [],
       framesAttack: [],
       frameDurationSec: this.catAnimFrameSec,
+      attackFrameDurationSec: this.catAttackFrameSec || this.catAnimFrameSec,
     });
     this.applyCurrentCatSkin();
 
@@ -1831,6 +1838,7 @@ export class GameController extends Component {
       framesStun: frames.stun,
       framesAttack: frames.attack,
       frameDurationSec: this.catAnimFrameSec,
+      attackFrameDurationSec: this.catAttackFrameSec || this.catAnimFrameSec,
     });
   }
 

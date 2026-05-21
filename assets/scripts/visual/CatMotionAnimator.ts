@@ -127,6 +127,8 @@ export class CatMotionAnimator {
       return;
     }
     if (ev.kind === 'attack') {
+      // 每段 0.15s × 2 段 = 总 0.3s。与攻击帧动画一个完整循环（5 帧 × 0.06s）
+      // 时长对齐，使玩家能看到完整的"扑击"动作而非瞬移；同时保留冲撞感不至于拖沓。
       this.active = {
         kind: 'attack',
         fromX,
@@ -135,7 +137,7 @@ export class CatMotionAnimator {
         toY: to.y,
         seg: 0,
         t: 0,
-        durSeg: 0.028,
+        durSeg: 0.15,
       };
       return;
     }

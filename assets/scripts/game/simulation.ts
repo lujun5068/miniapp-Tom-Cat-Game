@@ -241,7 +241,10 @@ export class GameSimulation {
         this.soundHooks.onStun?.();
       }
     }
-    this.actionCooldown = 0.062;
+    // cooldown 略短于攻击视觉时长（CatMotionAnimator attack durSeg×2 = 0.3s），
+    // 允许在视觉收尾的最后 ~50ms 缓存下一次输入，体感连贯但不会让游戏状态
+    // 远远跑在视觉前面，避免连按攻击时出现的"瞬移"错觉。
+    this.actionCooldown = 0.25;
     this.resolveEnd();
   }
 
