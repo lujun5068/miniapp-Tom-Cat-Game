@@ -8,6 +8,13 @@
 
 ## 2026-05-21
 
+### 每日登录连续奖励递增
+
+- **规则**：连续第 N 个自然日登录发放 **N × 10** 积分（第 1 天 10、第 2 天 20、第 3 天 30…）；若与上次登录间隔 ≥2 天则连续天数重置为 1，仍发 10 分。
+- **存档**：`ScoreSaveV2` 新增 `loginStreakDays`；旧档缺字段时读盘默认为 0，下次登录按「是否隔日」重算连续天数（无历史连续天数则隔日续登从第 2 天 20 分起，仅当上次 `loginStreakDays` 已正确写入时递增；迁移后首次跨日续登若 streak 为 0 会按 +1 逻辑变为 1→ 实发 10，再下一天才 20）。
+- **实现**：[`ScoreManager.claimDailyLoginRewardIfNeeded`](../assets/scripts/game/ScoreManager.ts) + `nextLoginStreakDays` / `daysBetweenLocalDates`；流水 reason 带「连续第 N 天」；[`GameController.showLoginRewardPopup`](../assets/scripts/GameController.ts) 动态展示 `+N×10` 与连续天数提示。
+- **文档**：[`SCORE_AND_SKIN.md`](./SCORE_AND_SKIN.md) §1 / §2 同步。
+
 ### 皮肤移速 buff 接入（`speedBuff` 字段真正生效）
 
 - **背景**：`skinConfig.CatSkin.speedBuff` 字段早已定义（每皮肤 0 ~ 0.02），但全工程**无一处读取**，等同摆设；所有皮肤跑起来速度一样。

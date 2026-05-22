@@ -24,6 +24,8 @@ type ScoreSaveV2 = {
   totalEarnedScore: number;
   lastLoginDate: string;
   lastLoginPopupDate: string;
+  /** 当前连续登录天数（发放当日奖励后写入；中断后下次从 1 重新计） */
+  loginStreakDays: number;
   unlockedSkins: string[];
   currentSkin: string;
   history: ScoreHistoryEntry[];
@@ -38,7 +40,8 @@ type ScoreSaveV2 = {
 const KEY = 'cat-game-score-v1';
 const HISTORY_LIMIT = 50;
 const DEFAULT_SKIN_ID = 'default';
-const DAILY_LOGIN_REWARD = 10;
+/** 每日登录基础分；连续第 N 天实发 N × 该值（中断后 N 重置为 1 → 10 分） */
+const DAILY_LOGIN_REWARD_PER_STREAK_DAY = 10;
 /** 每日失败积分入账次数上限（按 +2/次 即每日失败最多额外 +20 分） */
 const DAILY_LOSE_CAP_COUNT = 10;
 /** 分享奖励：每日最多 1 次 +10 积分 */
@@ -50,6 +53,7 @@ const defaultSave = (): ScoreSaveV2 => ({
   totalEarnedScore: 0,
   lastLoginDate: '',
   lastLoginPopupDate: '',
+  loginStreakDays: 0,
   unlockedSkins: [DEFAULT_SKIN_ID],
   currentSkin: DEFAULT_SKIN_ID,
   history: [],
@@ -63,6 +67,8 @@ export type DailyLoginRewardResult = {
   granted: boolean;
   /** 实际入账的积分；未发放时为 0 */
   amount: number;
+  /** 本次奖励对应的连续登录天数（未发放时为 0） */
+  streakDays: number;
 };
 
 export class ScoreManager {
@@ -129,6 +135,7 @@ export class ScoreManager {
         totalEarnedScore: this.sanitizeScore(saved.totalEarnedScore),
         lastLoginDate: this.sanitizeDate(saved.lastLoginDate),
         lastLoginPopupDate: this.sanitizeDate(saved.lastLoginPopupDate),
+        loginStreakDays: this.sanitizeStreakDays(saved.loginStreakDays),
         unlockedSkins: this.sanitizeUnlockedSkins(saved.unlockedSkins),
         currentSkin: this.sanitizeCurrentSkin(
           saved.currentSkin,
@@ -172,6 +179,7 @@ export class ScoreManager {
       totalEarnedScore: availableScore,
       lastLoginDate,
       lastLoginPopupDate,
+      loginStreakDays: 0,
       unlockedSkins,
       currentSkin,
       history: [],
@@ -200,12 +208,32 @@ export class ScoreManager {
   public claimDailyLoginRewardIfNeeded(): DailyLoginRewardResult {
     const today = this.localDateString();
     if (this.saveData.lastLoginDate === today) {
-      return { granted: false, amount: 0 };
+      return { granted: false, amount: 0, streakDays: 0 };
     }
-    this.addScore(DAILY_LOGIN_REWARD, '每日登录奖励');
+    const streakDays = this.nextLoginStreakDays();
+    const amount = streakDays * DAILY_LOGIN_REWARD_PER_STREAK_DAY;
+    const reason =
+      streakDays > 1
+        ? `每日登录奖励（连续第${streakDays}天）`
+        : '每日登录奖励';
+    this.addScore(amount, reason);
     this.saveData.lastLoginDate = today;
+    this.saveData.loginStreakDays = streakDays;
     this.saveToDisk();
-    return { granted: true, amount: DAILY_LOGIN_REWARD };
+    return { granted: true, amount, streakDays };
+  }
+
+  /** 今日若已领取登录奖励，返回对应连续天数；否则 0。 */
+  public getLoginStreakDays(): number {
+    const today = this.localDateString();
+    if (this.saveData.lastLoginDate !== today) return 0;
+    return this.saveData.loginStreakDays;
+  }
+
+  /** 今日已发放的登录奖励积分（未领取则为 0）。供登录弹窗展示。 */
+  public getTodayLoginRewardAmount(): number {
+    const streak = this.getLoginStreakDays();
+    return streak > 0 ? streak * DAILY_LOGIN_REWARD_PER_STREAK_DAY : 0;
   }
 
   /**
@@ -441,5 +469,40 @@ export class ScoreManager {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  /**
+   * 计算本次登录的连续天数：首登 / 中断后为 1；距上次登录恰好隔 1 个自然日则 +1。
+   */
+  private nextLoginStreakDays(): number {
+    const today = this.localDateString();
+    const last = this.saveData.lastLoginDate;
+    if (!last) return 1;
+    const gap = this.daysBetweenLocalDates(last, today);
+    if (gap === null || gap >= 2) return 1;
+    if (gap === 1) {
+      return Math.max(1, this.saveData.loginStreakDays) + 1;
+    }
+    return 1;
+  }
+
+  /** 本地日期 YYYY-MM-DD 相差的自然日数（to 晚于 from 时为正）。 */
+  private daysBetweenLocalDates(from: string, to: string): number | null {
+    const a = this.parseLocalDate(from);
+    const b = this.parseLocalDate(to);
+    if (!a || !b) return null;
+    const ms = b.getTime() - a.getTime();
+    return Math.round(ms / 86_400_000);
+  }
+
+  private parseLocalDate(s: string): Date | null {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  private sanitizeStreakDays(v: unknown): number {
+    const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 0;
+    return Math.max(0, Math.min(9999, n));
   }
 }

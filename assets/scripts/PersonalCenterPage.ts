@@ -85,6 +85,20 @@ const SKIN_PANEL_BOTTOM_PAD = 24;
  */
 const SKIN_PANEL_BODY_MAX_HEIGHT_RATIO = 0.4;
 
+/** 积分流水弹窗顶栏布局（标题 + 副标题 + 与列表间距），与 buildHistoryList 共用 */
+const HISTORY_POPUP_TOP_PAD = 20;
+const HISTORY_POPUP_TITLE_H = 36;
+const HISTORY_POPUP_TITLE_SUB_GAP = 8;
+const HISTORY_POPUP_SUBTITLE_H = 48;
+const HISTORY_POPUP_LIST_GAP = 16;
+const HISTORY_POPUP_BOTTOM_PAD = 24;
+const HISTORY_POPUP_HEADER_H =
+  HISTORY_POPUP_TOP_PAD +
+  HISTORY_POPUP_TITLE_H +
+  HISTORY_POPUP_TITLE_SUB_GAP +
+  HISTORY_POPUP_SUBTITLE_H +
+  HISTORY_POPUP_LIST_GAP;
+
 type SkinRowState = {
   node: Node;
   nameLabel: Label;
@@ -985,6 +999,9 @@ export class PersonalCenterPage extends Component {
     panelWidget.isAlignTop = false;
     panelWidget.isAlignVerticalCenter = true;
 
+    // 顶栏：标题 + 副标题 + 关闭（锚点顶对齐；列表区域用 HISTORY_POPUP_HEADER_H 对齐）
+    const headerPadX = 24;
+    const headerTopY = popupH * 0.5 - HISTORY_POPUP_TOP_PAD;
     const title = addLabel(
       panel,
       'PopupTitle',
@@ -992,10 +1009,34 @@ export class PersonalCenterPage extends Component {
       24,
       UiTheme.cream,
       220,
-      38,
+      HISTORY_POPUP_TITLE_H,
     );
     title.horizontalAlign = Label.HorizontalAlign.LEFT;
-    title.node.setPosition(-popupW * 0.5 + 130, popupH * 0.5 - 36, 0);
+    title.overflow = Label.Overflow.SHRINK;
+    const titleUt = title.node.getComponent(UITransform)!;
+    titleUt.setAnchorPoint(0, 1);
+    title.node.setPosition(-popupW * 0.5 + headerPadX, headerTopY, 0);
+
+    const subtitle = addLabel(
+      panel,
+      'PopupSubtitle',
+      '保持每日连续登录可以获得超额积分奖励哦',
+      14,
+      UiTheme.creamSoft,
+      popupW - headerPadX - 108,
+      HISTORY_POPUP_SUBTITLE_H,
+    );
+    subtitle.horizontalAlign = Label.HorizontalAlign.LEFT;
+    subtitle.verticalAlign = Label.VerticalAlign.TOP;
+    subtitle.enableWrapText = true;
+    subtitle.overflow = Label.Overflow.SHRINK;
+    const subUt = subtitle.node.getComponent(UITransform)!;
+    subUt.setAnchorPoint(0, 1);
+    subtitle.node.setPosition(
+      -popupW * 0.5 + headerPadX,
+      headerTopY - HISTORY_POPUP_TITLE_H - HISTORY_POPUP_TITLE_SUB_GAP,
+      0,
+    );
 
     const closeBtn = makeLabelButton('关闭', 96, 40, {
       fontSize: 16,
@@ -1009,19 +1050,27 @@ export class PersonalCenterPage extends Component {
       }),
     );
 
+    // 先铺列表（在下层），再保证顶栏文字与关闭按钮绘制在最上层
     this.buildHistoryList(panel, popupW, popupH);
+    title.node.setSiblingIndex(panel.children.length - 1);
+    subtitle.node.setSiblingIndex(panel.children.length - 1);
+    closeBtn.setSiblingIndex(panel.children.length - 1);
     this.syncUiLayer(overlay);
   }
 
   private buildHistoryList(panel: Node, panelW: number, panelH: number): void {
     const viewportW = panelW - 40;
-    const viewportH = panelH - 94;
+    const viewportH = panelH - HISTORY_POPUP_HEADER_H - HISTORY_POPUP_BOTTOM_PAD;
+    // 列表区域在顶栏与底边距之间垂直居中（与改版前 y≈-48 的居中逻辑一致，避免顶锚点把内容整体上移）
+    const scrollTopY = panelH * 0.5 - HISTORY_POPUP_HEADER_H;
+    const scrollBottomY = -panelH * 0.5 + HISTORY_POPUP_BOTTOM_PAD;
+    const scrollCenterY = (scrollTopY + scrollBottomY) * 0.5;
     const scrollResult = this.addScrollArea(
       panel,
       'HistoryScroll',
       viewportW,
       viewportH,
-      -34,
+      scrollCenterY,
     );
     this.historyContent = scrollResult.content;
     this.historyScrollView = scrollResult.scrollView;

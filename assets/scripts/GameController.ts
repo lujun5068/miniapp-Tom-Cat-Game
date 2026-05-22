@@ -1790,7 +1790,19 @@ export class GameController extends Component {
       UiTheme.cream,
       60,
     );
-    rewardLabel.string = '+10 积分';
+    const loginAmount = this.scoreManager.getTodayLoginRewardAmount();
+    const loginStreak = this.scoreManager.getLoginStreakDays();
+    rewardLabel.string = `+${loginAmount} 积分`;
+    if (loginStreak > 1) {
+      const streakHint = this.addCenterLabel(
+        panel,
+        'StreakHint',
+        18,
+        UiTheme.creamSoft,
+        28,
+      );
+      streakHint.string = `连续登录第 ${loginStreak} 天`;
+    }
 
     const close = makeLabelButton('知道了', 140, 56, {
       fill: new Color(

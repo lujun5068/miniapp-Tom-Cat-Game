@@ -9,7 +9,7 @@
 
 | 来源 | 奖励 | 频控 | 入账接口 |
 |------|------|------|----------|
-| 每日登录 | +10 | 每日 1 次（按本地日期） | `claimDailyLoginRewardIfNeeded()` |
+| 每日登录 | 连续第 N 天 +N×10（最低 10；中断后从 10 重计） | 每日 1 次（按本地日期） | `claimDailyLoginRewardIfNeeded()` |
 | 通关 | +5 | 每局结算 | `addScore(5, '游戏胜利')` |
 | 破关卡纪录 | +10 | 每次破纪录追加 | `addScore(10, '破关卡记录')` |
 | 失败 | +2 | 每日最多 10 次（即每日最多 +20） | `addLoseReward(2, '游戏失败')` |
@@ -32,6 +32,7 @@ type ScoreSaveV2 = {
   totalEarnedScore: number;     // 历史累计获得，仅增长不减
   lastLoginDate: string;        // 上次发放每日登录奖励的本地日期（YYYY-MM-DD）
   lastLoginPopupDate: string;   // 上次确认每日奖励弹窗的本地日期
+  loginStreakDays: number;      // 当前连续登录天数（发放当日奖励后写入；隔日未登录则下次重置为 1）
   unlockedSkins: string[];      // 已解锁皮肤 ID（默认皮肤始终包含）
   currentSkin: string;          // 当前皮肤 ID
   history: ScoreHistoryEntry[]; // 最近积分流水（earn / spend）
