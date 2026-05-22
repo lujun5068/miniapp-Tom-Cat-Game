@@ -71,6 +71,13 @@ import {
   paintModalPanelBorder,
 } from './ui/widgets';
 
+const SCORE_GUIDE_LINES = [
+  '1. 保持连续登录可以获得连续登录天数 N×10 积分',
+  '2. 每日将游戏进行分享可获得额外奖励 +10 积分，每日一次',
+  '3. 每局游戏关卡破最佳记录可获得额外 +10 积分',
+  '4. 游戏中通过攻击捕获猎物可获得额外 +5 积分/次，无上限',
+] as const;
+
 const { ccclass, property } = _decorator;
 
 const JOY_SCALE = 1.5;
@@ -316,6 +323,7 @@ export class GameController extends Component {
   private sim!: GameSimulation;
   private scoreManager!: ScoreManager;
   private loginRewardPopupRoot: Node | null = null;
+  private scoreGuidePopupRoot: Node | null = null;
 
   onLoad(): void {
     gameSession.initFromDisk();
@@ -461,6 +469,12 @@ export class GameController extends Component {
     leftRail.addChild(
       this.wrapBtn(makeLabelButton('个人中心', 120, 44), () =>
         this.openPersonalCenterPage(),
+      ),
+    );
+
+    leftRail.addChild(
+      this.wrapBtn(makeLabelButton('积分攻略', 120, 44), () =>
+        this.showScoreGuidePopup(),
       ),
     );
 
@@ -1826,6 +1840,142 @@ export class GameController extends Component {
     );
   }
 
+  private showScoreGuidePopup(): void {
+    if (this.scoreGuidePopupRoot) {
+      this.scoreGuidePopupRoot.destroy();
+      this.scoreGuidePopupRoot = null;
+    }
+    this.gameAudio.playUi();
+
+    const root = new Node('ScoreGuidePopupRoot');
+    this.scoreGuidePopupRoot = root;
+    root.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    const rootW = root.addComponent(Widget);
+    rootW.isAlignTop =
+      rootW.isAlignBottom =
+      rootW.isAlignLeft =
+      rootW.isAlignRight =
+        true;
+    rootW.top = rootW.bottom = rootW.left = rootW.right = 0;
+    root.addComponent(BlockInputEvents);
+    this.gameRoot.addChild(root);
+
+    const backdrop = new Node('Backdrop');
+    backdrop.addComponent(UITransform).setContentSize(view.getVisibleSize());
+    const bdW = backdrop.addComponent(Widget);
+    bdW.isAlignTop =
+      bdW.isAlignBottom =
+      bdW.isAlignLeft =
+      bdW.isAlignRight =
+        true;
+    bdW.top = bdW.bottom = bdW.left = bdW.right = 0;
+    const bdG = backdrop.addComponent(Graphics);
+    const vs = view.getVisibleSize();
+    paintModalBackdrop(bdG, vs.width, vs.height);
+    root.addChild(backdrop);
+
+    const panelW = Math.min(520, Math.max(400, vs.width - 120));
+    const panelH = Math.min(400, Math.max(320, vs.height - 100));
+    const panel = new Node('ScoreGuidePopup');
+    const pUt = panel.addComponent(UITransform);
+    pUt.setContentSize(panelW, panelH);
+    const pW = panel.addComponent(Widget);
+    pW.isAlignHorizontalCenter = true;
+    pW.isAlignVerticalCenter = true;
+    root.addChild(panel);
+
+    const panelBgNode = new Node('PanelBg');
+    panelBgNode.addComponent(UITransform).setContentSize(panelW, panelH);
+    paintModalPanelBg(
+      panelBgNode.addComponent(Graphics),
+      panelW,
+      panelH,
+      MODAL_PANEL_CORNER_RADIUS,
+    );
+    panel.addChild(panelBgNode);
+
+    const panelBorderNode = new Node('PanelBorder');
+    panelBorderNode.addComponent(UITransform).setContentSize(panelW, panelH);
+    paintModalPanelBorder(
+      panelBorderNode.addComponent(Graphics),
+      panelW,
+      panelH,
+      MODAL_PANEL_CORNER_RADIUS,
+    );
+    panel.addChild(panelBorderNode);
+
+    const title = this.addCenterLabel(
+      panel,
+      'GuideTitle',
+      24,
+      UiTheme.honey,
+      18,
+    );
+    title.string = '快速获取积分技巧';
+    title.lineHeight = 36;
+
+    const scoreGuideTitleTop = 18;
+    const scoreGuideTitleGap = 48;
+    this.addScoreGuideBody(
+      panel,
+      panelW,
+      panelH,
+      scoreGuideTitleTop + title.lineHeight + scoreGuideTitleGap,
+    );
+
+    const close = makeLabelButton('知道了', 140, 56, {
+      fill: new Color(
+        UiTheme.modalActionBtnFill.r,
+        UiTheme.modalActionBtnFill.g,
+        UiTheme.modalActionBtnFill.b,
+        255,
+      ),
+      fontSize: 22,
+    });
+    const cW = close.addComponent(Widget);
+    cW.isAlignBottom = true;
+    cW.isAlignHorizontalCenter = true;
+    cW.bottom = 28;
+    panel.addChild(
+      this.wrapBtn(close, () => {
+        this.scoreGuidePopupRoot = null;
+        root.destroy();
+      }),
+    );
+  }
+
+  /** 积分攻略弹窗正文：左对齐多行，占满标题与底部按钮之间的区域 */
+  private addScoreGuideBody(
+    panel: Node,
+    panelW: number,
+    panelH: number,
+    bodyTop: number,
+  ): void {
+    const bodyBottom = 88;
+    const n = new Node('GuideBody');
+    const ut = n.addComponent(UITransform);
+    ut.setContentSize(panelW - 48, panelH - bodyTop - bodyBottom);
+    const w = n.addComponent(Widget);
+    w.isAlignTop = true;
+    w.isAlignLeft = true;
+    w.isAlignRight = true;
+    w.isAlignBottom = true;
+    w.top = bodyTop;
+    w.left = 24;
+    w.right = 24;
+    w.bottom = bodyBottom;
+    const lb = n.addComponent(Label);
+    lb.string = SCORE_GUIDE_LINES.join('\n\n');
+    lb.fontSize = 16;
+    lb.lineHeight = 28;
+    lb.color = UiTheme.creamSoft;
+    lb.horizontalAlign = Label.HorizontalAlign.LEFT;
+    lb.verticalAlign = Label.VerticalAlign.TOP;
+    lb.enableWrapText = true;
+    lb.overflow = Label.Overflow.SHRINK;
+    panel.addChild(n);
+  }
+
   private openPersonalCenterPage(): void {
     this.gameAudio.playUi();
     this.gameRunning = false;
@@ -1912,7 +2062,10 @@ export class GameController extends Component {
     await new Promise<void>((resolve) => {
       assetManager.loadBundle('audio-stream', (bundleErr, bundle) => {
         if (bundleErr || !bundle) {
-          console.warn('[GameController] load audio-stream bundle failed', bundleErr);
+          console.warn(
+            '[GameController] load audio-stream bundle failed',
+            bundleErr,
+          );
           resolve();
           return;
         }
