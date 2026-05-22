@@ -44,6 +44,9 @@ export const WALK_REPEAT_INTERVAL_SEC = 0.045;
  */
 export const MIN_WALK_REPEAT_INTERVAL_SEC = 0.005;
 
+/** 攻击冲撞路径上每捕获 1 只老鼠的结算积分（与 GameController 结算弹窗「完美命中」一致） */
+export const ATTACK_CATCH_SCORE_PER_MOUSE = 5;
+
 export type GameSoundHooks = {
   onLevelStart?: () => void;
   onStun?: () => void;
@@ -108,6 +111,11 @@ export class GameSimulation {
    * 默认取 `WALK_REPEAT_INTERVAL_SEC`。
    */
   walkRepeatIntervalSec = WALK_REPEAT_INTERVAL_SEC;
+  /**
+   * 本局通过「攻击」动作（`tryPounce` 冲撞路径）捕获的老鼠数量；
+   * 走路 / 跳跃落点上的捕获不计入。`resetLevel` 时清零。
+   */
+  attackCatchCount = 0;
   gameEnd: GameEnd = 'none';
   private pendingMotion: MotionEvent[] = [];
   private rnd: () => number;
@@ -145,6 +153,7 @@ export class GameSimulation {
     this.stunnedRemaining = 0;
     this.actionCooldown = 0;
     this.walkCooldown = 0;
+    this.attackCatchCount = 0;
     this.miceMoveAcc = 0;
     if (opts?.playLevelStartSfx !== false) {
       this.soundHooks.onLevelStart?.();
@@ -291,7 +300,9 @@ export class GameSimulation {
       // 攻击为前进两格的冲撞，路径上的老鼠都应被吃掉（不只是终点）。
       const beforeMice = this.mice.length;
       for (const p of r.path) {
+        const lenBefore = this.mice.length;
         this.mice = catchMice(p.x, p.y, this.mice);
+        this.attackCatchCount += lenBefore - this.mice.length;
       }
       if (this.mice.length < beforeMice) {
         this.soundHooks.onCatch?.();

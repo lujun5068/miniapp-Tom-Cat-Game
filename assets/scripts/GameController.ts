@@ -40,6 +40,7 @@ import {
   DEFAULT_LEVEL_TIME_SEC,
   WALK_REPEAT_INTERVAL_SEC,
   MIN_WALK_REPEAT_INTERVAL_SEC,
+  ATTACK_CATCH_SCORE_PER_MOUSE,
 } from './game/simulation';
 import { gameSession } from './game/sessionState';
 import { loadLevelSave } from './storage/levelSave';
@@ -77,6 +78,13 @@ const SCORE_GUIDE_LINES = [
   '3. 每局游戏关卡破最佳记录可获得额外 +10 积分',
   '4. 游戏中通过攻击捕获猎物可获得额外 +5 积分/次，无上限',
 ] as const;
+
+/** 结算弹窗：标题顶距 / 行高 / 与正文间距（与登录奖励、积分攻略弹窗标题色一致） */
+const END_MODAL_TITLE_TOP = 22;
+const END_MODAL_TITLE_LINE_HEIGHT = 36;
+const END_MODAL_CONTENT_GAP = 12;
+/** 底栏按钮区：bottom 24 + 高 52 + 与正文间距 16 */
+const END_MODAL_BODY_BOTTOM = 92;
 
 const { ccclass, property } = _decorator;
 
@@ -888,15 +896,16 @@ export class GameController extends Component {
       panel,
       'Title',
       26,
-      UiTheme.cream,
-      28,
+      UiTheme.honey,
+      END_MODAL_TITLE_TOP,
     );
-    this.modalSub = this.addCenterLabel(
+    this.modalTitle.lineHeight = END_MODAL_TITLE_LINE_HEIGHT;
+    this.modalSub = this.addEndModalContentLabel(
       panel,
-      'Sub',
-      18,
-      UiTheme.creamSoft,
-      76,
+      END_MODAL_TITLE_TOP +
+        END_MODAL_TITLE_LINE_HEIGHT +
+        END_MODAL_CONTENT_GAP,
+      END_MODAL_BODY_BOTTOM,
     );
 
     const modalFill = new Color(
@@ -1075,6 +1084,33 @@ export class GameController extends Component {
     cw.isAlignHorizontalCenter = true;
     cw.bottom = 14;
     panel.addChild(this.wrapBtn(close, () => this.closeLevelsModal()));
+  }
+
+  /** 结算弹窗正文：顶底 Widget 锚定，避免与标题 / 底栏按钮重叠 */
+  private addEndModalContentLabel(
+    parent: Node,
+    top: number,
+    bottom: number,
+  ): Label {
+    const n = new Node('Sub');
+    const ut = n.addComponent(UITransform);
+    ut.setContentSize(380, 120);
+    const w = n.addComponent(Widget);
+    w.isAlignHorizontalCenter = true;
+    w.isAlignTop = true;
+    w.isAlignBottom = true;
+    w.top = top;
+    w.bottom = bottom;
+    const lb = n.addComponent(Label);
+    lb.string = '';
+    lb.fontSize = 18;
+    lb.lineHeight = 26;
+    lb.color = UiTheme.creamSoft;
+    lb.horizontalAlign = Label.HorizontalAlign.CENTER;
+    lb.verticalAlign = Label.VerticalAlign.TOP;
+    lb.overflow = Label.Overflow.SHRINK;
+    parent.addChild(n);
+    return lb;
   }
 
   private addCenterLabel(
@@ -1472,6 +1508,59 @@ export class GameController extends Component {
     this.layoutScreen();
   }
 
+  /**
+   * 关卡结束入账：通关/失败/破纪录 + 攻击捕获「完美命中」n×5（胜负均发放）。
+   */
+  private settleLevelEndScores(
+    kind: 'win' | 'lose',
+    isNewPersonalBest: boolean,
+  ): { detailLines: string[]; totalGranted: number } {
+    const detailLines: string[] = [];
+    let totalGranted = 0;
+
+    if (kind === 'win') {
+      this.scoreManager.addScore(5, '游戏胜利');
+      totalGranted += 5;
+      detailLines.push('通关 +5');
+      if (isNewPersonalBest) {
+        this.scoreManager.addScore(10, '破关卡记录');
+        totalGranted += 10;
+        detailLines.push('破纪录 +10');
+      }
+    } else {
+      const granted = this.scoreManager.addLoseReward(2, '游戏失败');
+      totalGranted += granted;
+      if (granted > 0) {
+        detailLines.push(`失败奖励 +${granted}`);
+      } else {
+        detailLines.push('失败奖励 +0（已达今日上限）');
+      }
+    }
+
+    const n = this.sim.attackCatchCount;
+    const perfectScore = n * ATTACK_CATCH_SCORE_PER_MOUSE;
+    if (perfectScore > 0) {
+      this.scoreManager.addScore(
+        perfectScore,
+        n === 1 ? '完美命中' : `完美命中×${n}`,
+      );
+      totalGranted += perfectScore;
+      detailLines.push(`完美命中 +${perfectScore}`);
+    }
+
+    return { detailLines, totalGranted };
+  }
+
+  private buildEndModalScoreText(
+    detailLines: string[],
+    totalGranted: number,
+  ): string {
+    if (detailLines.length === 0) {
+      return '本局未获得积分';
+    }
+    return `本局共 +${totalGranted}\n${detailLines.join('\n')}`;
+  }
+
   private showEndModal(
     kind: 'win' | 'lose',
     level: number,
@@ -1482,11 +1571,11 @@ export class GameController extends Component {
     this.modalRoot.active = true;
     if (kind === 'win') {
       this.modalTitle.string = isNewPersonalBest ? '捕鼠冠军' : '太棒了';
-      this.modalSub.string = `第 ${level} 关通关！剩余时间 ${timeLeft.toFixed(1)} 秒\n${scoreChangeText}`;
+      this.modalSub.string = `第 ${level} 关通关！剩余时间 ${timeLeft.toFixed(1)} 秒\n\n${scoreChangeText}`;
       this.modalBtnNext.node.active = level < MAX_LEVELS;
     } else {
       this.modalTitle.string = '别灰心 Tom';
-      this.modalSub.string = `这群杰瑞太狡猾了，再来一次吧\n${scoreChangeText}`;
+      this.modalSub.string = `这群杰瑞太狡猾了，再来一次吧\n\n${scoreChangeText}`;
       this.modalBtnNext.node.active = false;
     }
     this.layoutEndModalActionRow();
@@ -1637,13 +1726,10 @@ export class GameController extends Component {
         const isNewPersonalBest = this.sim.timeLeft > prevBest;
         gameSession.recordClearedLevel(this.sim.level, this.sim.timeLeft);
 
-        // 发放积分
-        this.scoreManager.addScore(5, '游戏胜利');
-        let scoreDelta = 5;
-        if (isNewPersonalBest) {
-          this.scoreManager.addScore(10, '破关卡记录');
-          scoreDelta += 10;
-        }
+        const { detailLines, totalGranted } = this.settleLevelEndScores(
+          'win',
+          isNewPersonalBest,
+        );
 
         this.gameAudio.playWin();
         this.showEndModal(
@@ -1651,17 +1737,13 @@ export class GameController extends Component {
           this.sim.level,
           this.sim.timeLeft,
           isNewPersonalBest,
-          isNewPersonalBest
-            ? `积分 +${scoreDelta}（通关 +5，破纪录 +10）`
-            : '积分 +5',
+          this.buildEndModalScoreText(detailLines, totalGranted),
         );
       } else {
-        // 失败积分有每日次数上限，超过后静默不发，并在弹窗里告知玩家
-        const granted = this.scoreManager.addLoseReward(2, '游戏失败');
-        const scoreText =
-          granted > 0
-            ? `积分 +${granted}`
-            : '已达今日失败积分上限，本次不再发放';
+        const { detailLines, totalGranted } = this.settleLevelEndScores(
+          'lose',
+          false,
+        );
 
         this.gameAudio.playLose();
         vibrateLong();
@@ -1670,7 +1752,7 @@ export class GameController extends Component {
           this.sim.level,
           this.sim.timeLeft,
           false,
-          scoreText,
+          this.buildEndModalScoreText(detailLines, totalGranted),
         );
       }
       this.syncRunBtn();

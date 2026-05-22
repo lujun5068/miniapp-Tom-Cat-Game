@@ -45,8 +45,8 @@ export const MODAL_PANEL_CORNER_RADIUS = 16;
 /** 与结算弹窗主面板同宽，关卡列表弹窗外框与之对齐 */
 export const MODAL_PANEL_WIDTH = 420;
 
-/** 结算弹窗面板高度 */
-export const MODAL_END_PANEL_HEIGHT = 280;
+/** 结算弹窗面板高度（含多行积分明细时预留正文区） */
+export const MODAL_END_PANEL_HEIGHT = 320;
 
 /** 全部关卡弹窗面板宽度上限（需容纳 6 列关卡格，实际宽度取屏幕与上限的较小值） */
 export const MODAL_LEVELS_PANEL_WIDTH = 560;

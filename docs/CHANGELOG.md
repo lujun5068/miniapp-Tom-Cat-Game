@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-05-22
+
+### 完美命中（攻击捕获）积分
+
+- **统计**：[`GameSimulation.tryPounce`](../assets/scripts/game/simulation.ts) 沿攻击冲撞路径 `catchMice` 时累加 `attackCatchCount`；走路 / 跳跃落点捕获不计入；`resetLevel` 清零。
+- **入账**：关卡结束（胜 / 负均发放）`n × ATTACK_CATCH_SCORE_PER_MOUSE`（5 分 / 只），流水 reason「完美命中」；与通关 / 失败 / 破纪录奖励叠加。
+- **弹窗**：[`GameController.settleLevelEndScores`](../assets/scripts/GameController.ts) 汇总明细，正文展示「本局共 +X」及分项（通关 +5、破纪录 +10、失败奖励、完美命中 +Y 等）。
+
+### 结算弹窗布局与标题样式
+
+- **问题**：多行积分明细后，固定 `top` 的标题与正文 Label 在垂直方向重叠。
+- **修复**：正文改用顶 / 底 `Widget` 锚定在标题行高与底栏按钮之间；标题色改为 `UiTheme.honey`（与每日登录、积分攻略弹窗一致）；面板高度 `MODAL_END_PANEL_HEIGHT` 280 → 320。
+- **文件**：[`GameController.ts`](../assets/scripts/GameController.ts)、[`ui/UiTheme.ts`](../assets/scripts/ui/UiTheme.ts)。
+
+---
+
 ## 2026-05-21
 
 ### 每日登录连续奖励递增
