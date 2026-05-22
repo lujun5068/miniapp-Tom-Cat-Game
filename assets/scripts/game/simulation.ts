@@ -53,6 +53,8 @@ export type GameSoundHooks = {
   onJumpSuccess?: () => void;
   onAttackSuccess?: () => void;
   onCatch?: () => void;
+  /** 单次攻击冲撞路径上捕获的老鼠数（仅攻击，不含走路 / 跳跃） */
+  onAttackCatch?: (count: number) => void;
 };
 
 export const MICE_STEP_BASE_SEC = 0.28;
@@ -299,13 +301,17 @@ export class GameSimulation {
       this.soundHooks.onAttackSuccess?.();
       // 攻击为前进两格的冲撞，路径上的老鼠都应被吃掉（不只是终点）。
       const beforeMice = this.mice.length;
+      let caughtThisPounce = 0;
       for (const p of r.path) {
         const lenBefore = this.mice.length;
         this.mice = catchMice(p.x, p.y, this.mice);
-        this.attackCatchCount += lenBefore - this.mice.length;
+        const n = lenBefore - this.mice.length;
+        caughtThisPounce += n;
+        this.attackCatchCount += n;
       }
-      if (this.mice.length < beforeMice) {
+      if (caughtThisPounce > 0) {
         this.soundHooks.onCatch?.();
+        this.soundHooks.onAttackCatch?.(caughtThisPounce);
       }
       // p1 可走但 p2 被挡：冲到第 1 格后撞晕，仍触发 stun 音效与持续时间。
       if (r.stun) {

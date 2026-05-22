@@ -322,6 +322,8 @@ export class GameController extends Component {
   private joyWidget!: Widget;
   private touchActionsWidget!: Widget;
   private hudDiskBestForLevel = 0;
+  /** 本局左侧 HUD：每次攻击捕获追加一行「+n 完美命中！」 */
+  private perfectHitHudLines: string[] = [];
   private lastLevelHudLine = '';
   private lastCountdownHudLine = '';
   private pendingLevelStartSfx = false;
@@ -394,6 +396,7 @@ export class GameController extends Component {
         this.gameAudio.playCatch();
         vibrateShort();
       },
+      onAttackCatch: (n) => this.onAttackPerfectHitHud(n),
     });
     this.prevWantBgm = this.gameRunning && this.sim.gameEnd === 'none';
     this.node.once(Node.EventType.TOUCH_END, this.onFirstUserAudio, this);
@@ -1285,6 +1288,31 @@ export class GameController extends Component {
     this.boardView?.markMapDirty();
   }
 
+  private clearPerfectHitHud(): void {
+    this.perfectHitHudLines = [];
+    this.lastLevelHudLine = '';
+  }
+
+  private onAttackPerfectHitHud(count: number): void {
+    if (count <= 0) return;
+    this.perfectHitHudLines.push(`+${count} 完美命中！`);
+    this.refreshLevelHudStrip();
+  }
+
+  private refreshLevelHudStrip(): void {
+    const bestSess = gameSession.bests[String(this.sim.level)];
+    const bestVal = Math.max(bestSess ?? 0, this.hudDiskBestForLevel);
+    const levelLine1 = `第 ${this.sim.level} 关`;
+    const levelLine2 = bestVal > 0 ? `本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
+    const base = levelLine2 ? `${levelLine1}\n${levelLine2}` : levelLine1;
+    const feed = this.perfectHitHudLines.join('\n');
+    const levelLine = feed ? `${base}\n${feed}` : base;
+    if (levelLine !== this.lastLevelHudLine) {
+      this.lastLevelHudLine = levelLine;
+      this.levelStripLabel.string = levelLine;
+    }
+  }
+
   private syncCountdownAfterLevel(): void {
     this.countdownLastCeil = Math.ceil(Math.max(0, this.sim.timeLeft));
   }
@@ -1484,6 +1512,10 @@ export class GameController extends Component {
 
   private hideResultModal(): void {
     this.modalRoot.active = false;
+    if (this.perfectHitHudLines.length > 0) {
+      this.clearPerfectHitHud();
+      this.refreshLevelHudStrip();
+    }
   }
 
   /** 与网页版结算弹窗右上角关闭一致：胜利时写盘并重置本关（静默） */
@@ -1773,17 +1805,9 @@ export class GameController extends Component {
         ? ` 眩晕 ${this.sim.stunnedRemaining.toFixed(1)}s`
         : '';
     const end = this.sim.gameEnd !== 'none' ? ' — 已结束' : '';
-    const bestSess = gameSession.bests[String(this.sim.level)];
-    const bestVal = Math.max(bestSess ?? 0, this.hudDiskBestForLevel);
-    const levelLine1 = `第 ${this.sim.level} 关`;
-    const levelLine2 = bestVal > 0 ? `本关最佳剩余 ${bestVal.toFixed(1)}s` : '';
-    const levelLine = levelLine2 ? `${levelLine1}\n${levelLine2}` : levelLine1;
     const timeLine = `剩余 ${Math.max(0, this.sim.timeLeft).toFixed(1)}s${st}${end}`;
 
-    if (levelLine !== this.lastLevelHudLine) {
-      this.lastLevelHudLine = levelLine;
-      this.levelStripLabel.string = levelLine;
-    }
+    this.refreshLevelHudStrip();
     if (timeLine !== this.lastCountdownHudLine) {
       this.lastCountdownHudLine = timeLine;
       this.countdownStripLabel.string = timeLine;

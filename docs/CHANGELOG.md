@@ -10,6 +10,7 @@
 
 ### 完美命中（攻击捕获）积分
 
+- **局内 HUD**：左侧关卡条在「本关最佳剩余 …」下方，每次攻击捕获后追加一行 `+n 完美命中！`（`n` 为当次冲撞路径捕获数）；结算弹窗关闭后（重玩 / 下一关 / 关闭）再清空，对局结束至弹窗关闭期间保留展示。
 - **统计**：[`GameSimulation.tryPounce`](../assets/scripts/game/simulation.ts) 沿攻击冲撞路径 `catchMice` 时累加 `attackCatchCount`；走路 / 跳跃落点捕获不计入；`resetLevel` 清零。
 - **入账**：关卡结束（胜 / 负均发放）`n × ATTACK_CATCH_SCORE_PER_MOUSE`（5 分 / 只），流水 reason「完美命中」；与通关 / 失败 / 破纪录奖励叠加。
 - **弹窗**：[`GameController.settleLevelEndScores`](../assets/scripts/GameController.ts) 汇总明细，正文展示「本局共 +X」及分项（通关 +5、破纪录 +10、失败奖励、完美命中 +Y 等）。
