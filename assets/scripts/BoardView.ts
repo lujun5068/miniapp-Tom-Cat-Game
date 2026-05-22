@@ -76,6 +76,27 @@ const CAT_SPRITE_NEUTRAL_TINT = new Color(255, 255, 255, 255);
 const CAT_SPRITE_STUN_TINT = new Color(255, 200, 200, 255);
 
 /**
+ * 取 SpriteFrame 裁切后的像素尺寸。
+ * 必须用 `rect`（trim 后区域）；`frame.width/height` 在部分导入配置下仍是原始画布（如 girl 76×64），
+ * 会导致 CUSTOM 拉伸比例算错，视觉上仍像被塞进方框。
+ */
+function catSpriteTrimmedSize(frame: SpriteFrame): {
+  width: number;
+  height: number;
+} {
+  const r = frame.rect;
+  const w = r.width > 0 ? r.width : frame.width;
+  const h = r.height > 0 ? r.height : frame.height;
+  return { width: Math.max(1, w), height: Math.max(1, h) };
+}
+
+/** 把裁切帧等比缩放进边长 `side` 的包围盒（长边贴合 side），返回节点额外 uniform scale。 */
+function catSpriteUniformFitScale(frame: SpriteFrame, side: number): number {
+  const { width: fw, height: fh } = catSpriteTrimmedSize(frame);
+  return side / Math.max(fw, fh);
+}
+
+/**
  * 按资源名中的帧序号排序，兼容下面几种命名：
  * - `frame_00_delay-0.2s` / `frame_00`（旧版 GIF 拆帧）
  * - `frame-00` / `frame-12`（新皮肤资源）
@@ -581,9 +602,9 @@ export class BoardView extends Component {
     t: number,
   ): void {
     const cat = anim.getPixelCenter();
-    // catR 仅作为占位圆点半径与 setContentSize 基准；最终视觉放大通过 setScale 叠加 CAT_DISPLAY_SCALE，
-    // 避免依赖 Sprite.SizeMode.CUSTOM 在不同 trim / 帧切换时机下的尺寸刷新差异。
+    // catR → side 为显示包围盒基准边长；贴图按帧宽高比等比 fit 进 side×side，再经 setScale 叠 CAT_DISPLAY_SCALE。
     const catR = Math.min(t * 0.38, 18);
+    const side = catR * 2.2;
 
     this.entityGfx.clear();
 
@@ -597,11 +618,10 @@ export class BoardView extends Component {
 
     if (catSprite) {
       this.catSpr.enabled = true;
+      // TRIMMED：UITransform 按裁切后 rect 设尺寸；再用节点 uniform scale 缩放到 side 包围盒。
+      // 勿用 CUSTOM + setContentSize：赋值 spriteFrame 后引擎常会按原始图重算，高瘦帧仍被拉方。
+      this.catSpr.sizeMode = Sprite.SizeMode.TRIMMED;
       this.catSpr.spriteFrame = catSprite;
-      this.catSpr.sizeMode = Sprite.SizeMode.CUSTOM;
-      const cut = this.catNode.getComponent(UITransform)!;
-      const side = catR * 2.2;
-      cut.setContentSize(side, side);
       this.catNode.setPosition(cat.x, cat.y, 0);
       // 资源约定（resources/cat-skins/<skin>/*）：
       //   - start / walk1 / xuanyun 单帧默认面朝右；
@@ -610,8 +630,9 @@ export class BoardView extends Component {
       const isStart = catAnimKey === 'start';
       const facingNeutralStart = isStart && !orientStartToFacing;
       const flip = facingNeutralStart ? 1 : sim.facing.dx < 0 ? -1 : 1;
-      const displayScale = catVisualScale * CAT_DISPLAY_SCALE;
-      this.catNode.setScale(flip * displayScale, displayScale, 1);
+      const fit = catSpriteUniformFitScale(catSprite, side);
+      const uniformScale = catVisualScale * CAT_DISPLAY_SCALE * fit;
+      this.catNode.setScale(flip * uniformScale, uniformScale, 1);
       let angle = 0;
       if (isStart) {
         if (orientStartToFacing) {
