@@ -102,7 +102,7 @@ export const catSkins: CatSkin[] = [
     price: 200,
     description: '可爱的萝莉，增加移速和攻击效果,专属音效',
     isDefault: false,
-    category: 'cat',
+    category: 'girl',
     speedBuff: 0.022,
     visualTint: { r: 110, g: 120, b: 155 },
   },
