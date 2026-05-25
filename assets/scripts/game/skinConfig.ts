@@ -39,7 +39,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'ninja',
     name: '忍者汤姆',
-    price: 100,
+    price: 200,
     description: '身手敏捷的忍者汤姆，少许增加移速',
     isDefault: false,
     category: 'cat',
@@ -49,7 +49,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'pirate',
     name: '海盗汤姆',
-    price: 100,
+    price: 200,
     description: '勇敢的海盗汤姆，少许增加移速',
     isDefault: false,
     category: 'cat',
@@ -59,7 +59,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'fox',
     name: '小狐仙',
-    price: 200,
+    price: 500,
     description: '妲己MM，增加大量移速',
     isDefault: false,
     category: 'cat',
@@ -69,7 +69,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'boar',
     name: '猪刚鬣',
-    price: 200,
+    price: 500,
     description: '可爱的蓬蓬猪，增加移速，专属音效和冲锋效果',
     isDefault: false,
     category: 'boar',
@@ -79,7 +79,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'wolf',
     name: '金刚狼',
-    price: 200,
+    price: 500,
     description: '凶残的金刚狼，增加移速，专属音效和攻击效果',
     isDefault: false,
     category: 'wolf',
@@ -89,7 +89,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'ying',
     name: '白头鹰',
-    price: 200,
+    price: 500,
     description: '自由的白头鹰，增加移速和攻击效果',
     isDefault: false,
     category: 'cat',
@@ -99,7 +99,7 @@ export const catSkins: CatSkin[] = [
   {
     id: 'girl',
     name: '小萝莉',
-    price: 200,
+    price: 800,
     description: '可爱的萝莉，增加移速和攻击效果,专属音效',
     isDefault: false,
     category: 'girl',
