@@ -92,10 +92,12 @@ const { ccclass, property } = _decorator;
 const JOY_SCALE = 1.5;
 const JOY_PANEL_SIZE = Math.round(140 * JOY_SCALE);
 const JOY_KNOB_SIZE = Math.round(56 * JOY_SCALE);
-/** 摇杆逻辑死区：knob 回中，但保留 intent 直至松手 */
-const JOY_LOGIC_DEAD_PX = Math.round(10 * JOY_SCALE);
-/** 四向扇区滞回半角，减轻 45° 边界方向抖动 */
-const JOY_HYSTERESIS_RAD = (18 * Math.PI) / 180;
+/** 摇杆逻辑死区：低于此偏移清零 intent */
+const JOY_LOGIC_DEAD_PX = Math.round(6 * JOY_SCALE);
+/** 手指相对上一帧位移低于此值视为「停留」，用于把当前点设为新圆心 */
+const JOY_STALL_MOVE_PX = 4;
+/** 连续停留帧数达到此值则把浮动摇杆圆心移到指尖 */
+const JOY_STALL_FRAMES_NEEDED = 3;
 /** 浮动摇杆左侧触摸热区（相对全屏宽 / 高的比例） */
 const JOY_TOUCH_ZONE_WIDTH_RATIO = 0.48;
 const JOY_TOUCH_ZONE_HEIGHT_RATIO = 0.55;
@@ -125,37 +127,6 @@ const UI_EDGE_PAD = 18;
 const LAYOUT_H_PAD = 24;
 
 type MoveIntent = { x: number; y: number };
-type GridDir = { dx: number; dy: number };
-
-/** 摇杆松手前锁定的四向，供扇区滞回使用 */
-let joyLockedDir: GridDir | null = null;
-
-function intentAngleToDir(a: number, locked: GridDir | null): GridDir {
-  const h = JOY_HYSTERESIS_RAD;
-  const q = Math.PI / 4;
-  if (locked) {
-    if (locked.dx === 1 && locked.dy === 0 && a >= -q - h && a < q + h) {
-      return { dx: 1, dy: 0 };
-    }
-    if (locked.dx === 0 && locked.dy === -1 && a >= q - h && a < 3 * q + h) {
-      return { dx: 0, dy: -1 };
-    }
-    if (
-      locked.dx === -1 &&
-      locked.dy === 0 &&
-      (a >= 3 * q - h || a < -3 * q + h)
-    ) {
-      return { dx: -1, dy: 0 };
-    }
-    if (locked.dx === 0 && locked.dy === 1 && a >= -3 * q - h && a < -q + h) {
-      return { dx: 0, dy: 1 };
-    }
-  }
-  if (a >= -q && a < q) return { dx: 1, dy: 0 };
-  if (a >= q && a < 3 * q) return { dx: 0, dy: -1 };
-  if (a >= 3 * q || a < -3 * q) return { dx: -1, dy: 0 };
-  return { dx: 0, dy: 1 };
-}
 
 function mapLinesForPlay(): string[] | null {
   const s = loadLevelSave();
@@ -169,9 +140,11 @@ function resolveMoveIntent(
   const mag = Math.hypot(intent.x, intent.y);
   if (mag > 1e-4) {
     const a = Math.atan2(intent.y, intent.x);
-    const dir = intentAngleToDir(a, joyLockedDir);
-    joyLockedDir = dir;
-    return dir;
+    const q = Math.PI / 4;
+    if (a >= -q && a < q) return { dx: 1, dy: 0 };
+    if (a >= q && a < 3 * q) return { dx: 0, dy: -1 };
+    if (a >= 3 * q || a < -3 * q) return { dx: -1, dy: 0 };
+    return { dx: 0, dy: 1 };
   }
   let dx = 0;
   let dy = 0;
@@ -336,8 +309,17 @@ export class GameController extends Component {
   private levelStartedForCatAnim = false;
   private endModalShown = false;
   private intent: MoveIntent = { x: 0, y: 0 };
+  /** 手指停留时继续沿此方向移动（相对逻辑圆心推杆前的最后方向） */
+  private joyHoldIntent: MoveIntent = { x: 0, y: 0 };
   private readonly keys = new Set<KeyCode>();
   private joyActive = false;
+  /** 方向计算用逻辑圆心（面板本地坐标），与圆盘 Widget 位置无关 */
+  private joyDirAnchorLx = 0;
+  private joyDirAnchorLy = 0;
+  private joyLastFingerLx = 0;
+  private joyLastFingerLy = 0;
+  private joyStallFrames = 0;
+  private joyHadMoveSinceAnchor = false;
   private screenBgNode: Node | null = null;
   private gameRoot!: Node;
   private touchUiRoot!: Node;
@@ -1720,14 +1702,29 @@ export class GameController extends Component {
     );
   }
 
-  /** 按下点作为圆心，浮动摇杆跟手 */
-  private positionJoyPanelAtTouch(e: EventTouch): void {
-    const ui = e.getUILocation();
+  private positionJoyPanelAtUi(uiX: number, uiY: number): void {
     const rootUt = this.touchUiRoot.getComponent(UITransform)!;
-    const local = rootUt.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+    const local = rootUt.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
     const clamped = this.clampJoyPanelPosition(local.x, local.y);
     this.joyWidget.enabled = false;
     this.joyPanel.setPosition(clamped);
+  }
+
+  /** 停留点仅更新逻辑圆心，圆盘 Widget 位置不变 */
+  private reanchorJoyAtFinger(e: EventTouch): void {
+    const v = this.joyOffsetFromEvent(e);
+    this.joyDirAnchorLx = v.x;
+    this.joyDirAnchorLy = v.y;
+    this.joyLastFingerLx = v.x;
+    this.joyLastFingerLy = v.y;
+    this.joyStallFrames = 0;
+    this.joyHadMoveSinceAnchor = false;
+    this.setKnob(v.x, v.y);
+  }
+
+  private positionJoyPanelAtTouch(e: EventTouch): void {
+    const ui = e.getUILocation();
+    this.positionJoyPanelAtUi(ui.x, ui.y);
   }
 
   private resetJoyPanelIdle(): void {
@@ -1739,24 +1736,67 @@ export class GameController extends Component {
   private onJoyStart(e: EventTouch): void {
     this.onFirstUserAudio();
     this.joyActive = true;
+    this.joyStallFrames = 0;
+    this.joyHadMoveSinceAnchor = false;
+    this.joyDirAnchorLx = 0;
+    this.joyDirAnchorLy = 0;
+    this.joyHoldIntent.x = 0;
+    this.joyHoldIntent.y = 0;
     this.positionJoyPanelAtTouch(e);
     const v = this.joyOffsetFromEvent(e);
+    this.joyLastFingerLx = v.x;
+    this.joyLastFingerLy = v.y;
     this.setKnob(v.x, v.y);
   }
 
   private onJoyMove(e: EventTouch): void {
     if (!this.joyActive) return;
     const v = this.joyOffsetFromEvent(e);
-    this.setKnob(v.x, v.y);
+    const frameMag = Math.hypot(
+      v.x - this.joyLastFingerLx,
+      v.y - this.joyLastFingerLy,
+    );
+
+    if (frameMag < JOY_STALL_MOVE_PX) {
+      this.joyStallFrames++;
+      if (
+        this.joyHadMoveSinceAnchor &&
+        this.joyStallFrames >= JOY_STALL_FRAMES_NEEDED
+      ) {
+        this.reanchorJoyAtFinger(e);
+      } else {
+        this.applyJoyHoldIntent();
+      }
+    } else {
+      this.joyStallFrames = 0;
+      this.joyHadMoveSinceAnchor = true;
+      this.setKnob(v.x, v.y);
+    }
+
+    this.joyLastFingerLx = v.x;
+    this.joyLastFingerLy = v.y;
   }
 
   private onJoyEnd(): void {
     this.joyActive = false;
     this.intent.x = 0;
     this.intent.y = 0;
-    joyLockedDir = null;
+    this.joyHoldIntent.x = 0;
+    this.joyHoldIntent.y = 0;
+    this.joyStallFrames = 0;
+    this.joyHadMoveSinceAnchor = false;
+    this.joyDirAnchorLx = 0;
+    this.joyDirAnchorLy = 0;
     this.joyKnob.setPosition(0, 0, 0);
     this.resetJoyPanelIdle();
+  }
+
+  private applyJoyHoldIntent(): void {
+    const h = Math.hypot(this.joyHoldIntent.x, this.joyHoldIntent.y);
+    if (h > 1e-4) {
+      this.intent.x = this.joyHoldIntent.x;
+      this.intent.y = this.joyHoldIntent.y;
+    }
   }
 
   private maxKnobTravelPx(): number {
@@ -1766,21 +1806,27 @@ export class GameController extends Component {
   }
 
   private setKnob(lx: number, ly: number): void {
-    const dCenter = Math.hypot(lx, ly);
-    if (dCenter < JOY_LOGIC_DEAD_PX) {
+    const ox = lx - this.joyDirAnchorLx;
+    const oy = ly - this.joyDirAnchorLy;
+    const dLogic = Math.hypot(ox, oy);
+
+    const dVisual = Math.hypot(lx, ly);
+    if (dVisual < JOY_LOGIC_DEAD_PX) {
       this.joyKnob.setPosition(0, 0, 0);
-      return;
+    } else {
+      const maxT = this.maxKnobTravelPx();
+      const cap = Math.min(dVisual, maxT);
+      this.joyKnob.setPosition((lx / dVisual) * cap, (ly / dVisual) * cap, 0);
     }
 
-    const ux = lx / dCenter;
-    const uy = ly / dCenter;
-    // 手指超出行程时方向仍按单位向量，knob 贴边（与 MOBA 摇杆一致）
-    this.intent.x = ux;
-    this.intent.y = uy;
-
-    const maxT = this.maxKnobTravelPx();
-    const cap = Math.min(dCenter, maxT);
-    this.joyKnob.setPosition(ux * cap, uy * cap, 0);
+    if (dLogic < JOY_LOGIC_DEAD_PX) {
+      this.applyJoyHoldIntent();
+      return;
+    }
+    this.intent.x = ox / dLogic;
+    this.intent.y = oy / dLogic;
+    this.joyHoldIntent.x = this.intent.x;
+    this.joyHoldIntent.y = this.intent.y;
   }
 
   update(dt: number): void {
