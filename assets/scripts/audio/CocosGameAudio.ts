@@ -40,6 +40,8 @@ export class CocosGameAudio {
    * 对应 action 缺失时（值为 null/undefined）回退到 Inspector 配置的通用 clip。
    */
   private skinClips: Partial<CatSkinAudioPack> = {};
+  /** 攻击击杀累计序号对应的 1kill…8kill（下标 0 = 1kill）。 */
+  private killClips: (AudioClip | null)[] = [];
 
   constructor(host: Node, clips: GameAudioClipBundle) {
     this.clips = clips;
@@ -130,6 +132,20 @@ export class CocosGameAudio {
    */
   setSkinAudio(pack: Partial<CatSkinAudioPack> | null): void {
     this.skinClips = pack ?? {};
+  }
+
+  setKillClips(clips: (AudioClip | null)[]): void {
+    this.killClips = clips;
+  }
+
+  /**
+   * 攻击冲撞击杀：按本关累计攻击击杀数播放 1kill…8kill（超过 8 仍播 8kill）。
+   * 非攻击击杀走 `playCatch`，不在此处理。
+   */
+  playAttackKill(cumulativeAttackKills: number): void {
+    if (cumulativeAttackKills <= 0) return;
+    const idx = Math.min(cumulativeAttackKills, 8) - 1;
+    this.playOneShot(this.killClips[idx], 0.55);
   }
 
   /** 取该 action 当前应播放的 clip：先用皮肤覆盖层、再回退到 Inspector 配置。 */

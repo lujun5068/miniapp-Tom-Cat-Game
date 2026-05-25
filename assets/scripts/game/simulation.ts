@@ -310,7 +310,6 @@ export class GameSimulation {
         this.attackCatchCount += n;
       }
       if (caughtThisPounce > 0) {
-        this.soundHooks.onCatch?.();
         this.soundHooks.onAttackCatch?.(caughtThisPounce);
       }
       // p1 可走但 p2 被挡：冲到第 1 格后撞晕，仍触发 stun 音效与持续时间。

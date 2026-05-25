@@ -62,6 +62,7 @@ import { loadPersonalCenterScene } from './game/sceneRoutes';
 import { getCatSkinById } from './game/skinConfig';
 import { loadCatSkinFrames } from './game/catSkinLoader';
 import { loadCatSkinAudio } from './game/catAudioLoader';
+import { loadKillAudios } from './game/killAudioLoader';
 import { loadAllRatSkinFrames } from './game/ratSkinLoader';
 import {
   defaultBtnCornerRadius,
@@ -382,6 +383,9 @@ export class GameController extends Component {
       sfxLose: this.clipSfxLose,
       sfxUi: this.clipSfxUi,
     });
+    void loadKillAudios().then((clips) => {
+      if (this.gameAudio) this.gameAudio.setKillClips(clips);
+    });
     // BGM 不在 Inspector，改从 audio-stream 分包异步加载；首次用户手势后会自动开始播放。
     void this.applyStreamingBgm();
     this.sim.setSoundHooks({
@@ -396,7 +400,11 @@ export class GameController extends Component {
         this.gameAudio.playCatch();
         vibrateShort();
       },
-      onAttackCatch: (n) => this.onAttackPerfectHitHud(n),
+      onAttackCatch: (n) => {
+        this.gameAudio.playAttackKill(this.sim.attackCatchCount);
+        vibrateShort();
+        this.onAttackPerfectHitHud(n);
+      },
     });
     this.prevWantBgm = this.gameRunning && this.sim.gameEnd === 'none';
     this.node.once(Node.EventType.TOUCH_END, this.onFirstUserAudio, this);
