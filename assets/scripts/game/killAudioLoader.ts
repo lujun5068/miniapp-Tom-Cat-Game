@@ -1,8 +1,12 @@
 import { AudioClip, assetManager, type AssetManager } from 'cc';
 
-/** `assets/skin-pack/kill-audios/kill/{1..8}kill.m4a`，与 `skin-pack` 分包共用 Bundle。 */
-const KILL_AUDIO_ROOT = 'kill-audios/kill';
+/**
+ * `assets/skin-pack/kill-audios/<packId>/{1..8}kill.m4a`
+ * `packId` 与 `skinConfig.CatSkin.killAudio` 一致（如 `kill-normal`、`kill-feiudui`）。
+ */
+const KILL_AUDIO_ROOT = 'kill-audios';
 const SKIN_PACK_BUNDLE = 'skin-pack';
+const KILL_FALLBACK_PACK = 'kill-normal';
 export const KILL_AUDIO_COUNT = 8;
 
 let skinPackBundlePromise: Promise<AssetManager.Bundle | null> | null = null;
@@ -24,9 +28,10 @@ function loadSkinPackBundle(): Promise<AssetManager.Bundle | null> {
 
 function loadOneKillClip(
   bundle: AssetManager.Bundle,
+  packId: string,
   index: number,
 ): Promise<AudioClip | null> {
-  const path = `${KILL_AUDIO_ROOT}/${index}kill`;
+  const path = `${KILL_AUDIO_ROOT}/${packId}/${index}kill`;
   return new Promise((resolve) => {
     bundle.load(path, AudioClip, (err, clip) => {
       if (err) {
@@ -39,15 +44,37 @@ function loadOneKillClip(
   });
 }
 
-/** 按 1kill … 8kill 顺序加载；缺失项为 null，播放时跳过。 */
-export async function loadKillAudios(): Promise<(AudioClip | null)[]> {
+function packHasAnyClip(clips: (AudioClip | null)[]): boolean {
+  return clips.some((c) => c != null);
+}
+
+async function loadKillAudiosFromBundle(
+  bundle: AssetManager.Bundle,
+  packId: string,
+): Promise<(AudioClip | null)[]> {
+  const clips: (AudioClip | null)[] = [];
+  for (let i = 1; i <= KILL_AUDIO_COUNT; i++) {
+    clips.push(await loadOneKillClip(bundle, packId, i));
+  }
+  return clips;
+}
+
+/** 按皮肤 `killAudio` 加载 1kill…8kill；整包缺失时回退 `kill-normal`。 */
+export async function loadKillAudios(
+  packId: string,
+): Promise<(AudioClip | null)[]> {
   const bundle = await loadSkinPackBundle();
   if (!bundle) {
     return Array.from({ length: KILL_AUDIO_COUNT }, () => null);
   }
-  const clips: (AudioClip | null)[] = [];
-  for (let i = 1; i <= KILL_AUDIO_COUNT; i++) {
-    clips.push(await loadOneKillClip(bundle, i));
+
+  const primary = await loadKillAudiosFromBundle(bundle, packId);
+  if (packHasAnyClip(primary) || packId === KILL_FALLBACK_PACK) {
+    return primary;
   }
-  return clips;
+
+  console.warn(
+    `[killAudioLoader] pack '${packId}' empty, fallback '${KILL_FALLBACK_PACK}'`,
+  );
+  return loadKillAudiosFromBundle(bundle, KILL_FALLBACK_PACK);
 }

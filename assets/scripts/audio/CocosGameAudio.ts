@@ -40,7 +40,7 @@ export class CocosGameAudio {
    * 对应 action 缺失时（值为 null/undefined）回退到 Inspector 配置的通用 clip。
    */
   private skinClips: Partial<CatSkinAudioPack> = {};
-  /** 攻击击杀累计序号对应的 1kill…8kill（下标 0 = 1kill）。 */
+  /** 当前皮肤击杀包：1kill…8kill（下标 0 = 1kill），由 `killAudio` 字段决定包路径。 */
   private killClips: (AudioClip | null)[] = [];
 
   constructor(host: Node, clips: GameAudioClipBundle) {

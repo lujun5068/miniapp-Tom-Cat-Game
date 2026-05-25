@@ -391,9 +391,6 @@ export class GameController extends Component {
       sfxLose: this.clipSfxLose,
       sfxUi: this.clipSfxUi,
     });
-    void loadKillAudios().then((clips) => {
-      if (this.gameAudio) this.gameAudio.setKillClips(clips);
-    });
     // BGM 不在 Inspector，改从 audio-stream 分包异步加载；首次用户手势后会自动开始播放。
     void this.applyStreamingBgm();
     this.sim.setSoundHooks({
@@ -2214,6 +2211,14 @@ export class GameController extends Component {
     this.applyWalkSpeedConfig();
     void this.applyCatSkinFrames(skin.id);
     void this.applyCatSkinAudio(skin.category);
+    void this.applyCatSkinKillAudio(skin.killAudio);
+  }
+
+  /** 按 `skin.killAudio` 加载击杀音效包并注入 `CocosGameAudio`。 */
+  private async applyCatSkinKillAudio(killAudioPack: string): Promise<void> {
+    const clips = await loadKillAudios(killAudioPack);
+    if (!this.gameAudio) return;
+    this.gameAudio.setKillClips(clips);
   }
 
   /**

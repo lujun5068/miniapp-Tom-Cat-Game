@@ -5,6 +5,8 @@ export interface CatSkin {
   description: string; // 皮肤描述
   isDefault: boolean; // 是否为默认皮肤
   category: string; // 分类
+  /** 攻击击杀音效包目录名：`assets/skin-pack/kill-audios/<killAudio>/1kill…8kill.m4a` */
+  killAudio: string;
   /**
    * 移速 buff（单位：秒）。从 Inspector 配置的基础 `walkRepeatIntervalSec` 中**扣减**该值
    * 后作为该皮肤实际的走路间隔，因此值越大走得越快。建议范围 0 ~ 0.03，超出后会被
@@ -35,6 +37,7 @@ export const catSkins: CatSkin[] = [
     category: 'cat',
     speedBuff: 0,
     visualTint: { r: 255, g: 255, b: 255 },
+    killAudio: 'kill-normal',
   },
   {
     id: 'ninja',
@@ -45,6 +48,7 @@ export const catSkins: CatSkin[] = [
     category: 'cat',
     speedBuff: 0.005,
     visualTint: { r: 110, g: 120, b: 155 },
+    killAudio: 'kill-normal',
   },
   {
     id: 'pirate',
@@ -55,6 +59,7 @@ export const catSkins: CatSkin[] = [
     category: 'cat',
     speedBuff: 0.005,
     visualTint: { r: 210, g: 85, b: 70 },
+    killAudio: 'kill-normal',
   },
   {
     id: 'fox',
@@ -62,9 +67,10 @@ export const catSkins: CatSkin[] = [
     price: 500,
     description: '妲己MM，增加大量移速',
     isDefault: false,
-    category: 'cat',
+    category: 'fox',
     speedBuff: 0.025,
     visualTint: { r: 110, g: 120, b: 155 },
+    killAudio: 'kill-feiudui',
   },
   {
     id: 'ying',
@@ -72,9 +78,10 @@ export const catSkins: CatSkin[] = [
     price: 500,
     description: '自由的白头鹰，增加移速和攻击效果',
     isDefault: false,
-    category: 'cat',
+    category: 'ying',
     speedBuff: 0.018,
     visualTint: { r: 110, g: 120, b: 155 },
+    killAudio: 'kill-feiudui',
   },
   {
     id: 'boar',
@@ -85,6 +92,7 @@ export const catSkins: CatSkin[] = [
     category: 'boar',
     speedBuff: 0.018,
     visualTint: { r: 255, g: 214, b: 80 },
+    killAudio: 'kill-feiudui',
   },
   {
     id: 'wolf',
@@ -95,6 +103,7 @@ export const catSkins: CatSkin[] = [
     category: 'wolf',
     speedBuff: 0.018,
     visualTint: { r: 110, g: 120, b: 155 },
+    killAudio: 'kill-normal',
   },
   {
     id: 'girl',
@@ -105,6 +114,7 @@ export const catSkins: CatSkin[] = [
     category: 'girl',
     speedBuff: 0.022,
     visualTint: { r: 110, g: 120, b: 155 },
+    killAudio: 'kill-feiudui',
   },
 ];
 
