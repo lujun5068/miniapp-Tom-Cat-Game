@@ -92,8 +92,13 @@ const { ccclass, property } = _decorator;
 const JOY_SCALE = 1.5;
 const JOY_PANEL_SIZE = Math.round(140 * JOY_SCALE);
 const JOY_KNOB_SIZE = Math.round(56 * JOY_SCALE);
-const JOY_RETURN_DEAD_PX = Math.round(16 * JOY_SCALE);
-const JOY_DELTA_THRESH_PX = 5.7 * JOY_SCALE;
+/** 摇杆逻辑死区：knob 回中，但保留 intent 直至松手 */
+const JOY_LOGIC_DEAD_PX = Math.round(10 * JOY_SCALE);
+/** 四向扇区滞回半角，减轻 45° 边界方向抖动 */
+const JOY_HYSTERESIS_RAD = (18 * Math.PI) / 180;
+/** 浮动摇杆左侧触摸热区（相对全屏宽 / 高的比例） */
+const JOY_TOUCH_ZONE_WIDTH_RATIO = 0.48;
+const JOY_TOUCH_ZONE_HEIGHT_RATIO = 0.55;
 
 /** 跳跃 / 攻击圆形按钮相对原 72px 的缩放 */
 const ACTION_BTN_SCALE = 2;
@@ -120,6 +125,37 @@ const UI_EDGE_PAD = 18;
 const LAYOUT_H_PAD = 24;
 
 type MoveIntent = { x: number; y: number };
+type GridDir = { dx: number; dy: number };
+
+/** 摇杆松手前锁定的四向，供扇区滞回使用 */
+let joyLockedDir: GridDir | null = null;
+
+function intentAngleToDir(a: number, locked: GridDir | null): GridDir {
+  const h = JOY_HYSTERESIS_RAD;
+  const q = Math.PI / 4;
+  if (locked) {
+    if (locked.dx === 1 && locked.dy === 0 && a >= -q - h && a < q + h) {
+      return { dx: 1, dy: 0 };
+    }
+    if (locked.dx === 0 && locked.dy === -1 && a >= q - h && a < 3 * q + h) {
+      return { dx: 0, dy: -1 };
+    }
+    if (
+      locked.dx === -1 &&
+      locked.dy === 0 &&
+      (a >= 3 * q - h || a < -3 * q + h)
+    ) {
+      return { dx: -1, dy: 0 };
+    }
+    if (locked.dx === 0 && locked.dy === 1 && a >= -3 * q - h && a < -q + h) {
+      return { dx: 0, dy: 1 };
+    }
+  }
+  if (a >= -q && a < q) return { dx: 1, dy: 0 };
+  if (a >= q && a < 3 * q) return { dx: 0, dy: -1 };
+  if (a >= 3 * q || a < -3 * q) return { dx: -1, dy: 0 };
+  return { dx: 0, dy: 1 };
+}
 
 function mapLinesForPlay(): string[] | null {
   const s = loadLevelSave();
@@ -132,18 +168,10 @@ function resolveMoveIntent(
 ): { dx: number; dy: number } {
   const mag = Math.hypot(intent.x, intent.y);
   if (mag > 1e-4) {
-    /* Cocos UI 本地坐标 Y 轴向上；网页版曾对 intent.y 取反以适配屏幕坐标 Y 向下 */
     const a = Math.atan2(intent.y, intent.x);
-    if (a >= -Math.PI / 4 && a < Math.PI / 4) {
-      return { dx: 1, dy: 0 };
-    }
-    if (a >= Math.PI / 4 && a < (3 * Math.PI) / 4) {
-      return { dx: 0, dy: -1 };
-    }
-    if (a >= (3 * Math.PI) / 4 || a < (-3 * Math.PI) / 4) {
-      return { dx: -1, dy: 0 };
-    }
-    return { dx: 0, dy: 1 };
+    const dir = intentAngleToDir(a, joyLockedDir);
+    joyLockedDir = dir;
+    return dir;
   }
   let dx = 0;
   let dy = 0;
@@ -300,6 +328,7 @@ export class GameController extends Component {
   private levelsModalRoot!: Node;
   private levelPickNodes: Node[] = [];
 
+  private joyTouchZone!: Node;
   private joyPanel!: Node;
   private joyKnob!: Node;
 
@@ -309,10 +338,6 @@ export class GameController extends Component {
   private intent: MoveIntent = { x: 0, y: 0 };
   private readonly keys = new Set<KeyCode>();
   private joyActive = false;
-  private joyPrevLx = 0;
-  private joyPrevLy = 0;
-  private joySpillLx = 0;
-  private joySpillLy = 0;
   private screenBgNode: Node | null = null;
   private gameRoot!: Node;
   private touchUiRoot!: Node;
@@ -321,6 +346,7 @@ export class GameController extends Component {
   private centerColumnWidget!: Widget;
   private boardMount!: Node;
   private joyWidget!: Widget;
+  private joyTouchZoneWidget!: Widget;
   private touchActionsWidget!: Widget;
   private hudDiskBestForLevel = 0;
   /** 本局左侧 HUD：每次攻击捕获追加一行「+n 完美命中！」 */
@@ -702,10 +728,24 @@ export class GameController extends Component {
     knUt.setContentSize(JOY_KNOB_SIZE, JOY_KNOB_SIZE);
     this.joyPanel.addChild(this.joyKnob);
 
-    this.joyPanel.on(Node.EventType.TOUCH_START, this.onJoyStart, this);
-    this.joyPanel.on(Node.EventType.TOUCH_MOVE, this.onJoyMove, this);
-    this.joyPanel.on(Node.EventType.TOUCH_END, this.onJoyEnd, this);
-    this.joyPanel.on(Node.EventType.TOUCH_CANCEL, this.onJoyEnd, this);
+    const vs0 = view.getVisibleSize();
+    this.joyTouchZone = new Node('JoyTouchZone');
+    const zUt = this.joyTouchZone.addComponent(UITransform);
+    zUt.setContentSize(
+      vs0.width * JOY_TOUCH_ZONE_WIDTH_RATIO,
+      vs0.height * JOY_TOUCH_ZONE_HEIGHT_RATIO,
+    );
+    const zW = this.joyTouchZone.addComponent(Widget);
+    zW.isAlignLeft = true;
+    zW.isAlignBottom = true;
+    zW.left = UI_EDGE_PAD;
+    zW.bottom = BOARD_AREA_BOTTOM_PAD;
+    this.joyTouchZoneWidget = zW;
+    touchRoot.addChild(this.joyTouchZone);
+    this.joyTouchZone.on(Node.EventType.TOUCH_START, this.onJoyStart, this);
+    this.joyTouchZone.on(Node.EventType.TOUCH_MOVE, this.onJoyMove, this);
+    this.joyTouchZone.on(Node.EventType.TOUCH_END, this.onJoyEnd, this);
+    this.joyTouchZone.on(Node.EventType.TOUCH_CANCEL, this.onJoyEnd, this);
 
     const circleD = Math.round(72 * ACTION_BTN_SCALE);
     const actionSpacing = Math.round(14 * ACTION_BTN_SCALE);
@@ -788,6 +828,8 @@ export class GameController extends Component {
     this.centerColumnWidget.bottom = sa.bottom;
     this.joyWidget.left = UI_EDGE_PAD + sa.left;
     this.joyWidget.bottom = BOARD_AREA_BOTTOM_PAD + sa.bottom;
+    this.joyTouchZoneWidget.left = UI_EDGE_PAD + sa.left;
+    this.joyTouchZoneWidget.bottom = BOARD_AREA_BOTTOM_PAD + sa.bottom;
     this.touchActionsWidget.right = UI_EDGE_PAD + sa.right;
     this.touchActionsWidget.bottom = BOARD_AREA_BOTTOM_PAD + sa.bottom;
   }
@@ -833,6 +875,7 @@ export class GameController extends Component {
       }
     }
     this.applySafeAreaInsets();
+    this.layoutJoyTouchZone(vs);
     this.layoutBoard();
     const lrLayComp = this.leftRailWidget.node.getComponent(Layout);
     lrLayComp?.updateLayout(true);
@@ -1649,26 +1692,61 @@ export class GameController extends Component {
     this.sim.tryPounce();
   }
 
-  private joyLocalFromEvent(e: EventTouch): Vec3 {
+  private layoutJoyTouchZone(vs: { width: number; height: number }): void {
+    if (!this.joyTouchZone) return;
+    const zUt = this.joyTouchZone.getComponent(UITransform)!;
+    zUt.setContentSize(
+      vs.width * JOY_TOUCH_ZONE_WIDTH_RATIO,
+      vs.height * JOY_TOUCH_ZONE_HEIGHT_RATIO,
+    );
+  }
+
+  private joyOffsetFromEvent(e: EventTouch): Vec3 {
     const ui = e.getUILocation();
     const tr = this.joyPanel.getComponent(UITransform)!;
     return tr.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
   }
 
+  private clampJoyPanelPosition(x: number, y: number): Vec3 {
+    const rootUt = this.touchUiRoot.getComponent(UITransform)!;
+    const half = JOY_PANEL_SIZE * 0.5;
+    const hw = rootUt.width * 0.5;
+    const hh = rootUt.height * 0.5;
+    const margin = UI_EDGE_PAD;
+    return new Vec3(
+      Math.min(hw - half - margin, Math.max(-hw + half + margin, x)),
+      Math.min(hh - half - margin, Math.max(-hh + half + margin, y)),
+      0,
+    );
+  }
+
+  /** 按下点作为圆心，浮动摇杆跟手 */
+  private positionJoyPanelAtTouch(e: EventTouch): void {
+    const ui = e.getUILocation();
+    const rootUt = this.touchUiRoot.getComponent(UITransform)!;
+    const local = rootUt.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+    const clamped = this.clampJoyPanelPosition(local.x, local.y);
+    this.joyWidget.enabled = false;
+    this.joyPanel.setPosition(clamped);
+  }
+
+  private resetJoyPanelIdle(): void {
+    this.joyWidget.enabled = true;
+    // touchUiRoot 锚点在中心，setPosition(0,0,0) 会落到屏幕正中；须由 Widget 对齐左下角
+    this.joyWidget.updateAlignment();
+  }
+
   private onJoyStart(e: EventTouch): void {
     this.onFirstUserAudio();
     this.joyActive = true;
-    this.joyPrevLx = 0;
-    this.joyPrevLy = 0;
-    this.joySpillLx = 0;
-    this.joySpillLy = 0;
-    const v = this.joyLocalFromEvent(e);
+    this.positionJoyPanelAtTouch(e);
+    const v = this.joyOffsetFromEvent(e);
     this.setKnob(v.x, v.y);
   }
 
   private onJoyMove(e: EventTouch): void {
     if (!this.joyActive) return;
-    const v = this.joyLocalFromEvent(e);
+    const v = this.joyOffsetFromEvent(e);
     this.setKnob(v.x, v.y);
   }
 
@@ -1676,7 +1754,9 @@ export class GameController extends Component {
     this.joyActive = false;
     this.intent.x = 0;
     this.intent.y = 0;
+    joyLockedDir = null;
     this.joyKnob.setPosition(0, 0, 0);
+    this.resetJoyPanelIdle();
   }
 
   private maxKnobTravelPx(): number {
@@ -1687,36 +1767,19 @@ export class GameController extends Component {
 
   private setKnob(lx: number, ly: number): void {
     const dCenter = Math.hypot(lx, ly);
-    if (dCenter < JOY_RETURN_DEAD_PX) {
+    if (dCenter < JOY_LOGIC_DEAD_PX) {
       this.joyKnob.setPosition(0, 0, 0);
-      this.intent.x = 0;
-      this.intent.y = 0;
-      this.joyPrevLx = lx;
-      this.joyPrevLy = ly;
-      this.joySpillLx = 0;
-      this.joySpillLy = 0;
       return;
     }
 
-    const dlx = lx - this.joyPrevLx;
-    const dly = ly - this.joyPrevLy;
-    this.joySpillLx += dlx;
-    this.joySpillLy += dly;
-    const accMag = Math.hypot(this.joySpillLx, this.joySpillLy);
-    if (accMag >= JOY_DELTA_THRESH_PX) {
-      this.intent.x = this.joySpillLx / accMag;
-      this.intent.y = this.joySpillLy / accMag;
-      this.joySpillLx = 0;
-      this.joySpillLy = 0;
-    }
-
-    this.joyPrevLx = lx;
-    this.joyPrevLy = ly;
+    const ux = lx / dCenter;
+    const uy = ly / dCenter;
+    // 手指超出行程时方向仍按单位向量，knob 贴边（与 MOBA 摇杆一致）
+    this.intent.x = ux;
+    this.intent.y = uy;
 
     const maxT = this.maxKnobTravelPx();
     const cap = Math.min(dCenter, maxT);
-    const ux = lx / dCenter;
-    const uy = ly / dCenter;
     this.joyKnob.setPosition(ux * cap, uy * cap, 0);
   }
 
