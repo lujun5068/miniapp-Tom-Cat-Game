@@ -3,7 +3,7 @@
   "splash-setting": {
     "background": {
       "type": "custom",
-      "image": "project://settings/bg (2).png"
+      "image": "project://settings/bg1.jpg"
     },
     "logo": {
       "type": "none"
