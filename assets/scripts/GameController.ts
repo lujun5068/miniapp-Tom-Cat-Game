@@ -78,11 +78,12 @@ const SCORE_GUIDE_LINES = [
   '2. 每日将游戏进行分享可获得额外奖励 +10 积分，每日一次',
   '3. 每局游戏关卡破最佳记录可获得额外 +10 积分',
   '4. 游戏中通过攻击捕获猎物可获得额外 +5 积分/次，无上限',
+  '5. 游戏技巧：WSDA/方向键 控制猫的移动，J 攻击，空格跳跃',
 ] as const;
 
 /** 结算弹窗：标题顶距 / 行高 / 与正文间距（与登录奖励、积分攻略弹窗标题色一致） */
 const END_MODAL_TITLE_TOP = 22;
-const END_MODAL_TITLE_LINE_HEIGHT = 36;
+const END_MODAL_TITLE_LINE_HEIGHT = 24;
 const END_MODAL_CONTENT_GAP = 12;
 /** 底栏按钮区：bottom 24 + 高 52 + 与正文间距 16 */
 const END_MODAL_BODY_BOTTOM = 92;
@@ -935,9 +936,7 @@ export class GameController extends Component {
     this.modalTitle.lineHeight = END_MODAL_TITLE_LINE_HEIGHT;
     this.modalSub = this.addEndModalContentLabel(
       panel,
-      END_MODAL_TITLE_TOP +
-        END_MODAL_TITLE_LINE_HEIGHT +
-        END_MODAL_CONTENT_GAP,
+      END_MODAL_TITLE_TOP + END_MODAL_TITLE_LINE_HEIGHT + END_MODAL_CONTENT_GAP,
       END_MODAL_BODY_BOTTOM,
     );
 
