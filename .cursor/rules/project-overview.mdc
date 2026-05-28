@@ -1,0 +1,33 @@
+---
+description: 项目概述、文档索引、Git 与沟通约定（全局）
+alwaysApply: true
+---
+
+# 猫捕鼠冠军Tom · 全局约定
+
+## 项目
+
+- Cocos Creator **3.8.8** + TypeScript 横屏休闲小游戏。
+- 主场景 `assets/scene-001.scene`；个人中心 Bundle `personal-center`。
+- 文档：`docs/DESIGN_DOC.md`、`docs/SCORE_AND_SKIN.md`、`docs/PROJECT_STATUS.md`、`docs/CHANGELOG.md`。
+
+## Git
+
+- **仅用户明确要求时** `commit` / `push` / 开 PR。
+- 提交信息写清「为什么」；勿改 `git config`；勿 `--no-verify` / 强推 `main`（除非用户要求）。
+
+## 沟通
+
+- 回复使用 **简体中文**。
+- 代码引用：单独一行的 `startLine:endLine:filepath` 围栏。
+
+## 禁止
+
+- 提交密钥、`.env`、证书。
+- 未经请求大规模改 `docs/` 或加无关测试/抽象。
+- 引入 React / Tailwind / DOM 做游戏 UI。
+
+## 构建
+
+- 主发：**微信小游戏**（`build/wechatgame`）；预览可用 `web-mobile`。
+- iOS 需单独 Cocos 构建；微信分享积分等能力需非微信替代方案。

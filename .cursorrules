@@ -1,0 +1,11 @@
+# 猫捕鼠冠军Tom
+
+详细规则已拆至 `.cursor/rules/`（Cursor 会自动加载）：
+
+| 文件 | 作用 |
+|------|------|
+| `project-overview.mdc` | 全局：文档、Git、沟通、构建 |
+| `cocos-architecture.mdc` | `assets/scripts/**/*.ts`：分层与编码 |
+| `gameplay-and-bundles.mdc` | 玩法、摇杆、Bundle、击杀音 |
+
+权威设计文档见 `docs/DESIGN_DOC.md`。

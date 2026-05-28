@@ -1,0 +1,32 @@
+---
+description: Cocos 脚本分层、修改入口与 TypeScript 编码规范
+globs: assets/scripts/**/*.ts
+alwaysApply: false
+---
+
+# 架构与 TypeScript
+
+## 分层
+
+| 层级 | 路径 | 规则 |
+|------|------|------|
+| 纯逻辑 | `game/` | 禁止 `Node` / `Component`；改规则 → `rules.ts` + `simulation.ts` |
+| 渲染 | `BoardView.ts`、`visual/` | 对象池与帧动画 |
+| 控制器 | `GameController.ts`、`PersonalCenterPage.ts` | UI、输入、流程、hooks |
+| 跨端 | `storage/platformKv.ts` | 微信 `wx.*` / `sys.localStorage` |
+| UI | `ui/widgets.ts`、`UiTheme.ts`、`safeArea.ts` | `makeLabelButton`、弹窗常量 |
+
+积分/皮肤 → `ScoreManager.ts`、`skinConfig.ts`。
+
+## 编码
+
+- **最小 diff**；风格与邻文件一致。
+- 微信 API 用 `import { WECHAT } from 'cc/env'` 守卫（`wechatShare`、`wechatVibration`）。
+- 场景跳转只用 `sceneRoutes.ts`（`loadMainGameScene` / `loadPersonalCenterScene`）。
+- 皮肤帧 `catSkinLoader`；皮肤音 `catAudioLoader`；击杀音 `killAudioLoader`（`kill-audios/<killAudio>/`）。
+- BGM：`audio-stream` + `CocosGameAudio.setBgmClip`，勿塞回 Inspector。
+
+## 禁止
+
+- 在 `GameSimulation` 内操作 `AudioSource` / `Label` / `Node`。
+- 非微信环境假设 `wx` 存在。

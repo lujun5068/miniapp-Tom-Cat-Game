@@ -1,0 +1,32 @@
+---
+description: 玩法逻辑、摇杆输入、资源 Bundle 与音效路径
+globs: assets/scripts/game/**,assets/scripts/GameController.ts,assets/scripts/PersonalCenterPage.ts,assets/scripts/audio/**,assets/**/*.meta
+alwaysApply: false
+---
+
+# 玩法 · 输入 · 资源
+
+## 玩法（勿随意破坏）
+
+- 走格：`tryMove` + `walkCooldown`；攻击/跳跃：`actionCooldown`（与走路冷却分离）。
+- 攻击击杀：仅 `tryPounce` 路径计入 `attackCatchCount`，触发 `onAttackCatch` + 皮肤 `killAudio` 连杀音。
+- 走路/跳跃踩鼠：`onCatch`（通用老鼠音），不走击杀包。
+- 完美命中积分：`n × ATTACK_CATCH_SCORE_PER_MOUSE`，与 `attackCatchCount` 一致。
+
+## 摇杆（GameController）
+
+- 浮动摇杆：圆盘位置在按下时定位，**停留不重定位圆盘**。
+- 方向：`joyDirAnchor*` 逻辑圆心；`joyHoldIntent` 在手指停留时保持移动方向。
+- 勿恢复 spill 滞回导致掉头迟钝；松手清零 intent / hold。
+
+## Bundle
+
+- 首包：`resources/`（`default` 皮肤、`cat` 音效）。
+- 分包：`skin-pack`（皮肤帧、`cat-audios`、`kill-audios`）、`personal-center`、`audio-stream`。
+- 微信：`subpackage`；iOS 等为 `merge_dep`（见各目录 `.meta`）。
+- 改 `bundleName` 须同步代码常量（如 `PERSONAL_CENTER_BUNDLE`）与 `docs/SCORE_AND_SKIN.md` §10。
+
+## skinConfig.killAudio
+
+- 取值 = `kill-audios` 下子目录名（如 `kill-normal`、`kill-feiudui`）。
+- 切换皮肤时 `applyCatSkinKillAudio(skin.killAudio)` 重载 1kill…8kill。
